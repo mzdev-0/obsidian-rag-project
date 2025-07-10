@@ -2,7 +2,7 @@ import unittest
 import os
 from dataclasses import dataclass, field
 from typing import List, Optional
-from parsing import parse_headings
+from parsing import parse_headings, extract_wikilinks
 
 @dataclass
 class ContentSection:
@@ -63,6 +63,43 @@ class TestParsing(unittest.TestCase):
         self.assertEqual(sections[1].content, "")
         self.assertEqual(sections[2].heading, "Heading 3")
         self.assertEqual(sections[2].content, "")
+
+class TestWikilinkExtraction(unittest.TestCase):
+
+    def test_extract_wikilinks_simple(self):
+        content = "This is a test with a [[simple link]]."
+        wikilinks = extract_wikilinks(content)
+        self.assertEqual(wikilinks, ["simple link"])
+
+    def test_extract_wikilinks_with_alias(self):
+        content = "This is a test with an [[actual link|aliased link]]."
+        wikilinks = extract_wikilinks(content)
+        self.assertEqual(wikilinks, ["actual link"])
+
+    def test_extract_wikilinks_multiple(self):
+        content = "Here are [[link one]] and [[link two]]."
+        wikilinks = extract_wikilinks(content)
+        self.assertEqual(wikilinks, ["link one", "link two"])
+
+    def test_extract_wikilinks_ignore_images(self):
+        content = "This should be ignored: [[image.png]]. But this [[not an image]] should be captured."
+        wikilinks = extract_wikilinks(content)
+        self.assertEqual(wikilinks, ["not an image"])
+
+    def test_extract_wikilinks_no_links(self):
+        content = "There are no wikilinks in this text."
+        wikilinks = extract_wikilinks(content)
+        self.assertEqual(wikilinks, [])
+
+    def test_extract_wikilinks_empty_string(self):
+        content = ""
+        wikilinks = extract_wikilinks(content)
+        self.assertEqual(wikilinks, [])
+
+    def test_extract_wikilinks_with_special_chars(self):
+        content = "Link with special chars [[link-with-hyphens_and_underscores]]."
+        wikilinks = extract_wikilinks(content)
+        self.assertEqual(wikilinks, ["link-with-hyphens_and_underscores"])
 
 if __name__ == '__main__':
     unittest.main()
