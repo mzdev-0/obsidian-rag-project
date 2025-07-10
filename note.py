@@ -1,5 +1,4 @@
 import os
-import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import List, Optional
@@ -8,14 +7,14 @@ import parsing
 Vector = List[float]
 
 
-@dataclass
-class Image:
-    """Represents an image within a note."""
-
-    path: str
-    ocr_text: Optional[str] = None
-    context: Optional[str] = None
-    embedding: Optional[Vector] = None
+# @dataclass
+# class Image:
+#    """Represents an image within a note."""
+#
+#    path: str
+#    ocr_text: Optional[str] = None
+#    context: Optional[str] = None
+#    embedding: Optional[Vector] = None
 
 
 @dataclass
@@ -37,7 +36,7 @@ class Note:
 
     # --- Structured Content ---
     content_sections: List[parsing.ContentSection] = field(default_factory=list)
-    images: List[Image] = field(default_factory=list)
+    #    images: List[Image] = field(default_factory=list)
 
     def __post_init__(self):
         """Initializes metadata and parses content."""
@@ -54,7 +53,7 @@ class Note:
     def _parse_content(self):
         self.wikilinks = parsing.extract_wikilinks(self._raw_content)
         self.content_sections = parsing.parse_headings(self._raw_content)
-        self.images = parsing.extract_images(self._raw_content)
+        # self.images = parsing.extract_images(self._raw_content)
 
     @classmethod
     def from_file(cls, file_path: str) -> "Note":

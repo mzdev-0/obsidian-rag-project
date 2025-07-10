@@ -84,7 +84,3 @@ def parse_headings(text: str) -> List[ContentSection]:
         print("Error: No headings found in the provided text.")
 
     return sections
-
-
-def extract_images(content):
-    pass
