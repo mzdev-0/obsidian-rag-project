@@ -13,6 +13,7 @@ __pycache__/
 # Distribution / packaging
 .Python
 build/
+test_notes/
 develop-eggs/
 dist/
 downloads/
