@@ -50,8 +50,7 @@ def parse_headings(text: str) -> List[ContentSection]:
     for line in lines:
         heading_match = re.match(r"^(#+)\s+(.*)", line)
         if heading_match:
-            if in_content and "".join(current_content).strip():
-                # Save the previous section
+            if in_content:  # Save the previous section if it exists
                 sections.append(
                     ContentSection(
                         id=f"{section_id_counter}",
@@ -71,7 +70,7 @@ def parse_headings(text: str) -> List[ContentSection]:
             current_content.append(line)
 
     # Add the last section
-    if in_content and (current_heading or "".join(current_content).strip()):
+    if in_content:
         sections.append(
             ContentSection(
                 id=f"{section_id_counter}",
