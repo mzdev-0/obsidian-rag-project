@@ -4,12 +4,12 @@
 from sentence_transformers import SentenceTransformer
 
 # Load the model
-model = SentenceTransformer("Qwen/Qwen3-Embedding-0.6B")
+model = SentenceTransformer("Qwen/Qwen3-Embedding-4B")
 
 # We recommend enabling flash_attention_2 for better acceleration and memory saving,
 # together with setting `padding_side` to "left":
 # model = SentenceTransformer(
-#     "Qwen/Qwen3-Embedding-0.6B",
+#     "Qwen/Qwen3-Embedding-8B",
 #     model_kwargs={"attn_implementation": "flash_attention_2", "device_map": "auto"},
 #     tokenizer_kwargs={"padding_side": "left"},
 # )
@@ -32,6 +32,7 @@ document_embeddings = model.encode(documents)
 
 # Compute the (cosine) similarity between the query and document embeddings
 similarity = model.similarity(query_embeddings, document_embeddings)
+print(document_embeddings.shape)
 print(similarity)
-# tensor([[0.7646, 0.1414],
-#         [0.1355, 0.6000]])
+# tensor([[0.7493, 0.0751],
+#         [0.0880, 0.6318]])
