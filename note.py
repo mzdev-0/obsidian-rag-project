@@ -30,9 +30,11 @@ class Note:
     modified_date: datetime = field(init=False)
 
     # --- Relational & Categorical Metadata ---
-    tags: List[str] = field(default_factory=list)
+    references: List[str] = field(default_factory=list)
     wikilinks: List[str] = field(default_factory=list)
-    urls: List[str] = field(default_factory=list)
+    urls: List[str] = field(
+        default_factory=list
+    )  # urls found in the note content (May not want to collect separately)
 
     # --- Structured Content ---
     content_sections: List[parsing.ContentSection] = field(default_factory=list)
