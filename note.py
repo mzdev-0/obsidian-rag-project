@@ -32,6 +32,7 @@ class Note:
     # --- Relational & Categorical Metadata ---
     references: List[str] = field(default_factory=list)
     wikilinks: List[str] = field(default_factory=list)
+    tag_wikilinks: List[str] = field(default_factory=list)
     urls: List[str] = field(
         default_factory=list
     )  # urls found in the note content (May not want to collect separately)
@@ -53,6 +54,7 @@ class Note:
         self.modified_date = datetime.fromtimestamp(stat.st_mtime)
 
     def _parse_content(self):
+        self.tag_wikilinks = parsing.parse_tags(self._raw_content)
         self.wikilinks = parsing.extract_wikilinks(self._raw_content)
         self.content_sections = parsing.parse_headings(self._raw_content)
         # self.images = parsing.extract_images(self._raw_content)
