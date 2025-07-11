@@ -1,61 +1,87 @@
-# Requires transformers>=4.51.0
-# Requires sentence-transformers>=2.7.0
-import torch
-from sentence_transformers import SentenceTransformer
-from transformers.utils.quantization_config import BitsAndBytesConfig
+# --- File: embedder.py ---
 
-# empty the cache
-torch.cuda.empty_cache()
+# 1. Installation
+# pip install langchain-community chromadb llama-cpp-python
 
-# Set the memory fraction to 40% of the total GPU memory.
-# Adjust the 0.4 value as needed for your model and hardware.
-# torch.cuda.set_per_process_memory_fraction(0.7, 0)
+from langchain_community.embeddings import LlamaCppEmbeddings
+import os
 
-# Load the model
-#
-# model = SentenceTransformer("Qwen/Qwen3-Embedding-4B")
-
-# quantization_config = BitsAndBytesConfig(
-#    load_in_4bit=True,
-#    bnb_4bit_quant_type="nf4",  # Normal Float 4-bit
-#    bnb_4bit_compute_dtype=torch.float16,  # Compute in fp16
-#    bnb_4bit_use_double_quant=True,  # Double quantization for extra savings
-# )
-# We recommend enabling flash_attention_2 for better acceleration and memory saving,
-# together with setting `padding_side` to "left":
-model = SentenceTransformer(
-    "Qwen/Qwen3-Embedding-8B-GGUF",
-    model_kwargs={
-        "file_name": "qwen3-embedding-8b-Q4_K_M",
-        #        "quantization_config": quantization_config,
-        "attn_implementation": "flash_attention_2",
-        "device_map": "auto",
-        "torch_dtype": torch.float16,
-        "low_cpu_mem_usage": True,
-    },
-    tokenizer_kwargs={"padding_side": "left"},
-    device=None,
+# --- Configuration ---
+# Ensure you have downloaded the GGUF model and placed it in a known directory.
+# You can find it on Hugging Face Hub. For example:
+# huggingface-cli download Qwen/Qwen2-7B-Instruct-GGUF qwen2-7b-instruct-q4_k_m.gguf --local-dir ./models
+MODEL_PATH = (
+    "./models/Qwen3-Embedding-8B-Q4_K_M.gguf"  # <-- IMPORTANT: Update this path
 )
 
-# The queries and documents to embed
-queries = [
-    "What is the capital of China?",
-    "Explain gravity",
-]
-documents = [
-    "The capital of China is Beijing.",
-    "Gravity is a force that attracts two bodies towards each other. It gives weight to physical objects and is responsible for the movement of planets around the sun.",
+# --- Model Loading ---
+# Initialize the LlamaCppEmbeddings model
+# This gives you fine-grained control over the model's parameters.
+# n_gpu_layers: Offload layers to GPU. -1 means all possible layers. Adjust if you have a GPU.
+# n_batch: Number of tokens to process in parallel. Adjust based on your hardware.
+# n_ctx: The context size for the model.
+# verbose: Set to True for detailed logging.
+try:
+    llama_embedder = LlamaCppEmbeddings(  # pyright: ignore[reportCallIssue]
+        model_path=MODEL_PATH,
+        n_gpu_layers=-1,
+        n_batch=512,
+        n_ctx=40960,
+        verbose=False,
+    )
+    print("✅ GGUF Embedding model loaded successfully.")
+except Exception as e:
+    print(e)
+#    print(f"❌ Error loading model: {e}")
+#    print("Please ensure the MODEL_PATH is correct and the GGUF file is not corrupted.")
+#    exit()
+
+
+# --- Custom Embedding Logic (from your PRD) ---
+
+
+# This function prepares the text according to your clean embedding strategy
+def create_embedding_text(title, heading, content):
+    """
+    Creates the clean content string for embedding.
+    Format: "{note.title} | {section.heading}\n\n{section.content}"
+    """
+    return f"{title} | {heading}\n\n{content}"
+
+
+# --- Example Usage ---
+
+# Define some sample note sections based on your PRD's data structure
+note_sections = [
+    {
+        "title": "Hybrid Retrieval Systems",
+        "heading": "Two-Stage Retrieval",
+        "content": "A hybrid retrieval system combines structured metadata for precise filtering and semantic search for content relevance. The key is to intersect the results to prevent false positives.",
+    },
+    {
+        "title": "Embedding Strategies",
+        "heading": "Clean Content Embedding",
+        "content": "To improve search quality, it's crucial to embed only the clean semantic content. Metadata like dates and tags should be stored separately, not included in the text sent to the embedding model.",
+    },
 ]
 
-# Encode the queries and documents. Note that queries benefit from using a prompt
-# Here we use the prompt called "query" stored under `model.prompts`, but you can
-# also pass your own prompt via the `prompt` argument
-query_embeddings = model.encode(queries, prompt_name="query")
-document_embeddings = model.encode(documents)
+# Prepare the texts for embedding
+texts_to_embed = [
+    create_embedding_text(sec["title"], sec["heading"], sec["content"])
+    for sec in note_sections
+]
 
-# Compute the (cosine) similarity between the query and document embeddings
-similarity = model.similarity(query_embeddings, document_embeddings)
-print(document_embeddings.shape)
-print(similarity)
-# tensor([[0.7493, 0.0751],
-#         [0.0880, 0.6318]])
+print("\n--- Texts to be Embedded ---")
+for text in texts_to_embed:
+    print(f'-> "{text[:80]}..."')
+
+# Generate the embeddings
+try:
+    embeddings = llama_embedder.embed_documents(texts_to_embed)  # pyright: ignore
+    print(f"\n✅ Successfully generated {len(embeddings)} embeddings.")
+    print(f"   Each embedding has a dimension of: {len(embeddings[0])}")
+
+    # You would now store these embeddings in ChromaDB, associated with your metadata.
+
+except Exception as e:
+    print(f"❌ Error during embedding generation: {e}")
