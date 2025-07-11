@@ -1,7 +1,8 @@
 import re
 from typing import List
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List, Optional, Union
+from datetime import datetime
 
 
 Vector = List[float]
@@ -130,3 +131,51 @@ def is_heading_followed_by_code(lines: List[str], heading_index: int) -> bool:
             return line.startswith("```")
 
     return False
+
+def parse_datetime(text: str):
+    """
+    Parses the date and time from the first two lines of the note content.
+    """
+    lines = text.strip().split('\n')
+    if len(lines) < 2:
+        return None
+    
+    date_str = lines[0].strip()
+    time_str = lines[1].strip()
+    
+    try:
+        return datetime.strptime(f"{date_str} {time_str}", "%m-%d-%Y %H:%M")
+    except ValueError:
+        return None
+
+def parse_references(text: str) -> List[str]:
+    """
+    Parses reference URLs from the 'Reference:' line until the 'Tags:' line.
+    """
+    references = []
+    in_references = False
+    for line in text.split('\n'):
+        if line.lower().startswith("reference:"):
+            in_references = True
+            line_content = line[len("Reference:"):].strip()
+            if line_content:
+                references.extend(re.split(r',\s*', line_content))
+        elif in_references:
+            if line.lower().startswith("tags:"):
+                break
+            line_content = line.strip()
+            if line_content:
+                references.extend(re.split(r',\s*', line_content))
+    
+    return [ref for ref in references if ref]
+
+def parse_tags(text: str) -> List[str]:
+    """
+    Parses tags from the 'Tags:' line.
+    """
+    for line in text.split('\n'):
+        if line.lower().startswith("tags:"):
+            tags_str = line[len("Tags:"):].strip()
+            if tags_str:
+                return [tag.strip() for tag in tags_str.split(',')]
+    return []

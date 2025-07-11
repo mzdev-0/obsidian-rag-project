@@ -3,10 +3,10 @@ import os
 import glob
 from note import Note
 
-class TestNoteInstantiation(unittest.TestCase):
 
+class TestNoteInstantiation(unittest.TestCase):
     def test_create_note_from_file(self):
-        test_notes_path = 'obsidian-rag-project/test_notes/*.md'
+        test_notes_path = "obsidian-rag-project/test_notes/*.md"
         test_note_files = glob.glob(test_notes_path)
 
         for note_file in test_note_files:
@@ -17,7 +17,7 @@ class TestNoteInstantiation(unittest.TestCase):
                 print(f"File Path: {note.file_path}")
                 print(f"Created Date: {note.created_date}")
                 print(f"Modified Date: {note.modified_date}")
-                print(f"Tags: {note.tags}")
+                print(f"Tags: {note.tag_wikilinks}")
                 print(f"Wikilinks: {note.wikilinks}")
                 print(f"URLs: {note.urls}")
                 print("--- Content Sections ---")
@@ -29,5 +29,5 @@ class TestNoteInstantiation(unittest.TestCase):
                 print("-" * (len(note.title) + 20))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()
