@@ -38,6 +38,7 @@ class Note:
     )  # urls found in the note content (May not want to collect separately)
 
     # --- Structured Content ---
+    note_body: str = field(init=False)
     content_sections: List[parsing.ContentSection] = field(default_factory=list)
     #    images: List[Image] = field(default_factory=list)
 
@@ -50,13 +51,16 @@ class Note:
         """Extracts metadata (title, dates) from the file system."""
         self.title = os.path.splitext(os.path.basename(self.file_path))[0]
         stat = os.stat(self.file_path)
-        self.created_date = datetime.fromtimestamp(stat.st_ctime)
+        self.created_date = parsing.parse_datetime(
+            self._raw_content
+        ) or datetime.fromtimestamp(stat.st_mtime)
         self.modified_date = datetime.fromtimestamp(stat.st_mtime)
 
     def _parse_content(self):
         self.tag_wikilinks = parsing.parse_tags(self._raw_content)
-        self.wikilinks = parsing.extract_wikilinks(self._raw_content)
-        self.content_sections = parsing.parse_headings(self._raw_content)
+        self.note_body = parsing.parse_body(self._raw_content)
+        self.wikilinks = parsing.extract_wikilinks(self.note_body)
+        self.content_sections = parsing.parse_headings(self.note_body)
         # self.images = parsing.extract_images(self._raw_content)
 
     @classmethod
