@@ -157,7 +157,7 @@ def parse_datetime(text: str) -> Optional[datetime]:
 
         if re.match(date_pattern, date_str) and re.match(time_pattern, time_str):
             try:
-                return datetime.strptime(f"{date_str} {time_str}", "%m-%d-%Y %H:%M %p")
+                return datetime.strptime(f"{date_str} {time_str}", "%m-%d-%Y %I:%M %p")
             except ValueError:
                 pass
 
