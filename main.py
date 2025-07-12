@@ -4,6 +4,7 @@ import chromadb
 from note import Note
 from embed import llama_embedder, create_embedding_text
 
+
 def main():
     print("Starting RAG PoC...")
 
@@ -21,7 +22,7 @@ def main():
     if not note_files:
         print("❌ No notes found in 'test_notes/' directory.")
         return
-    
+
     print(f"Found {len(note_files)} notes to process.")
 
     all_documents = []
@@ -41,9 +42,7 @@ def main():
 
                 # Prepare the text for embedding
                 embedding_text = create_embedding_text(
-                    title=note.title,
-                    heading=section.heading,
-                    content=section.content
+                    title=note.title, heading=section.heading, content=section.content
                 )
 
                 # Prepare the metadata
@@ -73,20 +72,23 @@ def main():
                 metadatas=all_metadatas,
                 ids=all_ids,
             )
-            print(f"\n✅ Successfully added {len(all_documents)} documents to ChromaDB.")
-            
+            print(
+                f"\n✅ Successfully added {len(all_documents)} documents to ChromaDB."
+            )
+
             # Optional: Verify by querying the collection
             retrieved_items = collection.get(limit=5)
             print("\n--- Sample of items in ChromaDB ---")
-            for i, item_id in enumerate(retrieved_items['ids']):
+            for i, item_id in enumerate(retrieved_items["ids"]):
                 print(f"  ID: {item_id}")
-                print(f"  Metadata: {retrieved_items['metadatas'][i]}")
+                print(f"  Metadata: {retrieved_items['metadatas'][i]}")  # pyright: ignore
             print("-" * 35)
 
         except Exception as e:
             print(f"❌ Error adding documents to ChromaDB: {e}")
 
     print("\nPoC finished.")
+
 
 if __name__ == "__main__":
     main()
