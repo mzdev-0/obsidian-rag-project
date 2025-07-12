@@ -111,7 +111,15 @@ def parse_headings(text: str) -> List[ContentSection]:
                 i += 1
 
     if not sections:
-        print("Error: No headings found in the provided text.")
+        # If no headings are found, treat the entire text as a single section.
+        sections.append(
+            ContentSection(
+                id="0",
+                heading="<No Heading>",
+                content=text.strip(),
+                level=0,
+            )
+        )
 
     return sections
 
@@ -132,21 +140,29 @@ def is_heading_followed_by_code(lines: List[str], heading_index: int) -> bool:
 
     return False
 
-def parse_datetime(text: str):
+
+def parse_datetime(text: str) -> Optional[datetime]:
     """
     Parses the date and time from the first two lines of the note content.
+    Returns None if the content doesn't follow the expected format.
     """
-    lines = text.strip().split('\n')
-    if len(lines) < 2:
-        return None
-    
-    date_str = lines[0].strip()
-    time_str = lines[1].strip()
-    
-    try:
-        return datetime.strptime(f"{date_str} {time_str}", "%m-%d-%Y %H:%M")
-    except ValueError:
-        return None
+    lines = text.strip().split("\n")
+
+    if len(lines) >= 2:
+        date_str = lines[0].strip()
+        time_str = lines[1].strip()
+
+        date_pattern = r"^\d{1,2}-\d{1,2}-\d{4}$"  # MM-DD-YYYY or M-D-YYYY
+        time_pattern = r"^\d{1,2}:\d{2} (AM|PM)$"  # HH:MM AM/PM or H:MM AM/PM
+
+        if re.match(date_pattern, date_str) and re.match(time_pattern, time_str):
+            try:
+                return datetime.strptime(f"{date_str} {time_str}", "%m-%d-%Y %H:%M %p")
+            except ValueError:
+                pass
+
+    return None
+
 
 def parse_references(text: str) -> List[str]:
     """
@@ -154,28 +170,63 @@ def parse_references(text: str) -> List[str]:
     """
     references = []
     in_references = False
-    for line in text.split('\n'):
+    for line in text.split("\n"):
         if line.lower().startswith("reference:"):
             in_references = True
-            line_content = line[len("Reference:"):].strip()
+            line_content = line[len("Reference:") :].strip()
             if line_content:
-                references.extend(re.split(r',\s*', line_content))
+                references.extend(re.split(r",\s*", line_content))
         elif in_references:
             if line.lower().startswith("tags:"):
                 break
             line_content = line.strip()
             if line_content:
-                references.extend(re.split(r',\s*', line_content))
-    
+                references.extend(re.split(r",\s*", line_content))
+
     return [ref for ref in references if ref]
+
 
 def parse_tags(text: str) -> List[str]:
     """
     Parses tags from the 'Tags:' line.
     """
-    for line in text.split('\n'):
+    for line in text.split("\n"):
         if line.lower().startswith("tags:"):
-            tags_str = line[len("Tags:"):].strip()
-            if tags_str:
-                return [tag.strip() for tag in tags_str.split(',')]
+            # Find all wikilinks in the tags line
+            return extract_wikilinks(line)
     return []
+
+
+def parse_body(raw_content: str) -> str:
+    """
+    Parses the main body of the note. The body is the content that appears
+    after the 'Tags:' line and all associated tag declarations.
+    """
+    lines = raw_content.split("\n")
+
+    try:
+        tags_line_index = next(
+            i for i, line in enumerate(lines) if line.lower().startswith("tags:")
+        )
+
+        # The body starts after the block of tags.
+        # A block of tags is a contiguous set of non-empty lines after "Tags:".
+
+        body_start_line = tags_line_index + 1
+
+        # Move past any non-empty lines that are part of the tags block
+        while body_start_line < len(lines) and lines[body_start_line].strip():
+            body_start_line += 1
+
+        # Move past any empty lines between tags and body
+        while body_start_line < len(lines) and not lines[body_start_line].strip():
+            body_start_line += 1
+
+        if body_start_line < len(lines):
+            return "\n".join(lines[body_start_line:]).strip()
+        else:
+            return ""
+
+    except StopIteration:
+        # If 'Tags:' is not found, consider the entire content as the body
+        return raw_content.strip()
