@@ -1,102 +1,91 @@
-
 import unittest
-from unittest.mock import MagicMock, patch
-import json
-import sys
 import os
+import sys
 
 # Add the project root to the Python path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-# Assuming the query_planner module and its functions will be created
-# This allows us to write tests first (TDD)
-try:
-    from query_planner import deconstruct_query
-except ImportError:
-    # Create a dummy function if it doesn't exist so tests can be loaded
-    def deconstruct_query(user_query, llm_client):
-        # In a real TDD scenario, the actual function would be implemented.
-        # For this test setup, we can simulate the behavior the test expects.
-        if "fail" in user_query:
-            raise json.JSONDecodeError("mock error", "", 0)
-        
-        # Simulate a successful response based on query content for testing
-        if "RAG" in user_query and "ChromaDB" in user_query:
-            return {
-                "semantic_query": "Notes about RAG and ChromaDB",
-                "filters": [
-                    {"field": "created_date", "operator": "$gt", "value": "2025-06-12"},
-                    {"field": "content", "operator": "$in", "value": ["ChromaDB"]}
-                ],
-                "response_format": "selective_context"
-            }
-        elif "RAG" in user_query:
-            return {
-                "semantic_query": "Notes about RAG",
-                "filters": [],
-                "response_format": "metadata_only"
-            }
-        elif "ChromaDB filters" in user_query:
-             return {
-                "semantic_query": "Details about ChromaDB filters",
-                "filters": [{"field": "content", "operator": "$in", "value": ["ChromaDB filters"]}],
-                "response_format": "selective_context"
-            }
-        else:
-            return {}
+from query_planner import deconstruct_query
 
 
-class TestQueryPlanner(unittest.TestCase):
+class TestQueryPlannerIntegration(unittest.TestCase):
+    """
+    Integration tests for the Query Planner.
 
-    def setUp(self):
-        """Set up a mock LLM client before each test."""
-        self.mock_llm_client = MagicMock()
+    These tests make REAL API calls to the configured LLM (OpenRouter)
+    to ensure the deconstruction logic works with a live model.
+    """
 
-    def test_deconstruct_query_success(self):
+    def test_deconstruct_query_produces_valid_plan(self):
         """
-        Test if deconstruct_query correctly parses a valid JSON response from the LLM.
+        Test that a standard query returns a valid, structured plan.
         """
+        # Arrange
         user_query = "Find my notes on RAG that mention ChromaDB from last month."
-        
-        # In TDD, we test against the contract of the function.
-        # The dummy function above simulates the expected LLM behavior.
-        plan = deconstruct_query(user_query, self.mock_llm_client)
 
-        self.assertIsNotNone(plan)
-        self.assertEqual(plan['semantic_query'], "Notes about RAG and ChromaDB")
-        self.assertEqual(plan['response_format'], "selective_context")
-        self.assertIn({"field": "content", "operator": "$in", "value": ["ChromaDB"]}, plan['filters'])
+        # Act
+        plan = deconstruct_query(user_query)
 
-    def test_deconstruct_query_json_failure_and_retry(self):
+        # Assert
+        self.assertIsInstance(plan, dict)
+        self.assertIn("semantic_query", plan)
+        self.assertIn("filters", plan)
+        self.assertIn("response_format", plan)
+
+        self.assertIsInstance(plan["semantic_query"], str)
+        self.assertIsInstance(plan["filters"], list)
+        self.assertIsInstance(plan["response_format"], str)
+        self.assertTrue(plan["semantic_query"])  # Should not be empty
+
+    def test_broad_query_selects_metadata_only_format(self):
         """
-        Test the retry mechanism and fallback to a default plan if JSON parsing fails.
+        Test that a broad, discovery-oriented query correctly selects the
+        'metadata_only' response format.
         """
-        user_query = "fail query"
-        
-        # The dummy function will raise JSONDecodeError for this query.
-        with self.assertRaises(json.JSONDecodeError):
-            deconstruct_query(user_query, self.mock_llm_client)
+        # Arrange
+        user_query = "What have I written about threat intelligence?"
 
-    def test_broad_query_returns_metadata_only(self):
+        # Act
+        plan = deconstruct_query(user_query)
+
+        # Assert
+        self.assertEqual(plan["response_format"], "metadata_only")
+
+    def test_specific_query_selects_selective_context_format(self):
         """
-        Test if a broad query correctly sets the response_format to 'metadata_only'.
+        Test that a specific, factual query correctly selects the
+        'selective_context' response format.
         """
-        user_query = "What are my notes about RAG?"
-        
-        plan = deconstruct_query(user_query, self.mock_llm_client)
+        # Arrange
+        user_query = "What specific command did I use to transfer files with GfxDownloadWrapper.exe?"
 
-        self.assertEqual(plan['response_format'], 'metadata_only')
+        # Act
+        plan = deconstruct_query(user_query)
 
-    def test_specific_query_returns_selective_context(self):
+        # Assert
+        self.assertEqual(plan["response_format"], "selective_context")
+
+    def test_query_with_date_filter_is_parsed(self):
         """
-        Test if a specific query correctly sets the response_format to 'selective_context'.
+        Test that the LLM correctly identifies and creates a date-based filter.
         """
-        user_query = "What did I write about ChromaDB filters?"
-        
-        plan = deconstruct_query(user_query, self.mock_llm_client)
+        # Arrange
+        user_query = "Show me notes about javascript created since yesterday."
 
-        self.assertEqual(plan['response_format'], 'selective_context')
+        # Act
+        plan = deconstruct_query(user_query)
+
+        # Assert
+        self.assertTrue(
+            any(f["field"] == "created_date" for f in plan["filters"]),
+            "No created_date filter was found in the plan.",
+        )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
+    # This allows running the tests directly
+    # Ensure OPENROUTER_API_KEY is set in your environment
+    if not os.getenv("OPENROUTER_API_KEY"):
+        print("ERROR: OPENROUTER_API_KEY environment variable not set.")
+        sys.exit(1)
     unittest.main()
