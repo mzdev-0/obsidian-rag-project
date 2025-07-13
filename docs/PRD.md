@@ -61,7 +61,7 @@ graph TD
 -   **Language**: Python
 -   **Vector Database**: ChromaDB (stores embeddings and filterable metadata)
 -   **LLM Framework**: LangChain
--   **Embedding Model**: `Qwen/Qwen3-8B-Instruct-GGUF` 
+-   **Embedding Model**: `Qwen/Qwen3-0.6B-Instruct-GGUF` 
 -   **Query Planner LLM**: A local or API-based LLM tasked with query deconstruction.
 
 ### Data Structures
