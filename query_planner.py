@@ -13,6 +13,7 @@ logging.basicConfig(
 DEFAULT_MODEL = "qwen3:8b"
 
 # --- OpenAI Client Initialization ---
+# It's good practice to handle the case where the API key might not be set.
 api_key = os.getenv("OPENROUTER_API_KEY")
 if not api_key:
     raise ValueError("The OPENROUTER_API_KEY environment variable is not set.")
@@ -32,9 +33,16 @@ Your sole output **MUST** be a single, raw JSON object conforming to the provide
 - Today's Date: {today_date}
 
 **# Core Task**
-Deconstruct the user's query into two main components:
-1.  **`semantic_query`**: A rephrased version of the query, optimized for semantic vector search. Focus on the core *concepts* of the query.
-2.  **`filters`**: A list of metadata filters to be applied as a `where` clause in ChromaDB.
+Deconstruct the user's query into three main components:
+1.  **`semantic_search_needed`**: A boolean (`true` or `false`) indicating if the query requires a vector search (`query`) or can be satisfied by a metadata-only lookup (`get`).
+2.  **`semantic_query`**: A rephrased version of the query, optimized for semantic vector search. This can be an empty string if `semantic_search_needed` is `false`.
+3.  **`filters`**: A list of metadata filters to be applied as a `where` clause in ChromaDB.
+
+**# Semantic (`query`) vs. Metadata (`get`) Search**
+You must decide if the user's query requires understanding the *meaning* of the text, or if it's just asking for items that match specific, exact metadata.
+
+- Set `semantic_search_needed: true` if the query involves concepts, topics, or summarization (e.g., "notes about X", "what did I say about Y"). These queries use ChromaDB's `query()` method. The `semantic_query` should be rich and descriptive.
+- Set `semantic_search_needed: false` if the query can be answered *entirely* with the available filter fields (e.g., "all notes with tag 'project-alpha'", "files from last week"). These queries use ChromaDB's `get()` method. The `semantic_query` can be left as an empty string `""`.
 
 **# Available Filter Fields**
 - `created_date`, `modified_date`: ISO 8601 datetime string (e.g., "2024-07-13T12:00:00"). Use with `$gte` (greater than or equal) and `$lte` (less than or equal).
@@ -49,15 +57,16 @@ Based on the user's intent, decide on the appropriate response format:
 
 **# Examples**
 
-1.  **User Query**: "Recent RAG notes that mention ChromaDB but aren't tagged as draft"
+1.  **User Query**: "Recent RAG notes that mention ChromaDB"
     **Your Reasoning (Internal Monologue)**:
-    - The user wants notes from recently. "Recent" implies a time filter, maybe the last month.
-    - Core concept is "RAG and ChromaDB". This is the semantic query.
-    - Two explicit filters: "mention ChromaDB" (can be semantic, but also good for semantic query) and "aren't tagged as draft". The 'draft' tag needs to be excluded. Wait, ChromaDB doesn't have a `$nin` (not in) for lists. I'll have to omit this filter and let the parent LLM handle it, but I will capture everything else.
+    - The user wants notes from recently. "Recent" implies a time filter.
+    - The core concept is "RAG and ChromaDB". This is a strong conceptual search.
+    - Because it's a conceptual search, `semantic_search_needed` must be `true`.
     - This is a specific request, so `selective_context` is best.
     **Your JSON Output**:
     ```json
     {{
+      "semantic_search_needed": true,
       "semantic_query": "Notes about Retrieval-Augmented Generation that reference the ChromaDB vector store",
       "filters": [
         {{
@@ -70,16 +79,29 @@ Based on the user's intent, decide on the appropriate response format:
     }}
     ```
 
-2.  **User Query**: "Give me a list of recon TTPs from my notes."
+2.  **User Query**: "Show me all files tagged 'project-hydra' that are level 2 headings."
     **Your Reasoning (Internal Monologue)**:
-    - The user wants a "list". This signals a `metadata_only` response.
-    - The core concept is "reconnaissance TTPs" (Tactics, Techniques, and Procedures). This is a strong semantic query.
-    - There are no explicit metadata filters mentioned.
+    - The user is asking for a list based on very specific metadata. "tag is 'project-hydra'" and "level 2 headings" are both exact filters.
+    - There is no conceptual or "aboutness" search here. This is a perfect case for a metadata-only `get`.
+    - Therefore, `semantic_search_needed` is `false`, and the `semantic_query` can be empty.
+    - The user wants a list of files, so `metadata_only` is the right response format.
     **Your JSON Output**:
     ```json
     {{
-      "semantic_query": "Tactics, Techniques, and Procedures (TTPs) for reconnaissance in cybersecurity.",
-      "filters": [],
+      "semantic_search_needed": false,
+      "semantic_query": "",
+      "filters": [
+        {{
+          "field": "tags",
+          "operator": "$in",
+          "value": ["project-hydra"]
+        }},
+        {{
+          "field": "level",
+          "operator": "$eq",
+          "value": 2
+        }}
+      ],
       "response_format": "metadata_only"
     }}
     ```
@@ -90,15 +112,19 @@ Based on the user's intent, decide on the appropriate response format:
 **# Your JSON Output**
 """
 
-# The schema is now a dictionary, NOT a list containing a dictionary.
+# The schema is updated to include `semantic_search_needed` and make it required.
 SCHEMA_OBJECT = {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "title": "Query Plan",
-    "description": "A structured query plan deconstructed from a user's natural language query.",
+    "description": "A structured query plan deconstructed from a user's natural language query for ChromaDB.",
     "type": "object",
     "properties": {
+        "semantic_search_needed": {
+            "description": "Determines if the query requires a semantic vector search (`query`) or can be fulfilled with a direct metadata lookup (`get`).",
+            "type": "boolean",
+        },
         "semantic_query": {
-            "description": "The user's query, rephrased for optimal semantic search performance.",
+            "description": "The user's query, rephrased for optimal semantic search. Can be an empty string if `semantic_search_needed` is false.",
             "type": "string",
         },
         "filters": {
@@ -144,7 +170,12 @@ SCHEMA_OBJECT = {
             "enum": ["metadata_only", "selective_context"],
         },
     },
-    "required": ["semantic_query", "filters", "response_format"],
+    "required": [
+        "semantic_search_needed",
+        "semantic_query",
+        "filters",
+        "response_format",
+    ],
 }
 
 
@@ -177,7 +208,6 @@ def deconstruct_query(
             content_str = response.choices[0].message.content
             plan = json.loads(content_str)  # pyright: ignore
 
-            # Basic validation can be removed if you trust the schema, but can be a good safety net.
             logging.info("Successfully deconstructed query using JSON Schema.")
             print("**** PLAN IN JSON ****")
             print(plan)
