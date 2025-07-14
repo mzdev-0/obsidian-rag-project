@@ -93,12 +93,12 @@ class TestQueryPlannerIntegration(unittest.TestCase):
             "The correct tag filter was not found in the plan.",
         )
 
-    def test_broad_query_selects_metadata_only_format(self):
+    def test_metadata_only_format_for_list_query(self):
         """
-        Test that a broad, discovery-oriented query correctly selects the 'metadata_only' response format.
+        Test that a list-oriented query correctly selects the 'metadata_only' response format.
         """
         # Arrange
-        user_query = "What have I written about threat intelligence?"
+        user_query = "List all my headings that are about threat intelligence."
 
         # Act
         plan = deconstruct_query(user_query)
