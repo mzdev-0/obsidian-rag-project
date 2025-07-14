@@ -10,9 +10,7 @@ import os
 # Ensure you have downloaded the GGUF model and placed it in a known directory.
 # You can find it on Hugging Face Hub. For example:
 # huggingface-cli download Qwen/Qwen2-7B-Instruct-GGUF qwen2-7b-instruct-q4_k_m.gguf --local-dir ./models
-MODEL_PATH = (
-    "./models/Qwen3-Embedding-8B-Q4_K_M.gguf"  # <-- IMPORTANT: Update this path
-)
+MODEL_PATH = "/home/cas/projects/obsidian-rag-project/models/Qwen3-Embedding-0.6B-f16.gguf"  # <-- IMPORTANT: Update this path
 
 # --- Model Loading ---
 # Initialize the LlamaCppEmbeddings model
@@ -26,7 +24,7 @@ try:
         model_path=MODEL_PATH,
         n_gpu_layers=-1,
         n_batch=512,
-        n_ctx=40960,
+        n_ctx=32768,
         verbose=False,
     )
     print("✅ GGUF Embedding model loaded successfully.")
