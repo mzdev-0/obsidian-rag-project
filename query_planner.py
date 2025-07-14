@@ -112,7 +112,7 @@ Based on the user's intent, decide on the appropriate response format:
 **# Your JSON Output**
 """
 
-# The schema is updated to include `semantic_search_needed` and make it required.
+# Updated schema that allows empty semantic_query and uses ChromaDB-appropriate operators
 SCHEMA_OBJECT = {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "title": "Query Plan",
@@ -124,7 +124,7 @@ SCHEMA_OBJECT = {
             "type": "boolean",
         },
         "semantic_query": {
-            "description": "The user's query, rephrased for optimal semantic search. Can be an empty string if `semantic_search_needed` is false.",
+            "description": "The user's query, rephrased for optimal semantic search. Must be empty string if semantic_search_needed is false.",
             "type": "string",
         },
         "filters": {
@@ -150,14 +150,14 @@ SCHEMA_OBJECT = {
                     "operator": {
                         "description": "The operator to use for the filter, following ChromaDB syntax.",
                         "type": "string",
-                        "enum": ["$gt", "$lt", "$gte", "$lte", "$eq", "$ne", "$in"],
+                        "enum": ["$gt", "$gte", "$lt", "$lte", "$eq", "$ne", "$in"],
                     },
                     "value": {
-                        "description": "The value to filter against. Can be a string, integer, or a list of strings for the '$in' operator.",
-                        "oneOf": [
+                        "description": "The value to filter against. Can be string, int, or list for '$in'.",
+                        "anyOf": [
                             {"type": "string"},
                             {"type": "integer"},
-                            {"type": "array", "items": {"type": "string"}},
+                            {"type": "array", "items": {"type": "string"}}
                         ],
                     },
                 },
@@ -165,7 +165,7 @@ SCHEMA_OBJECT = {
             },
         },
         "response_format": {
-            "description": "The desired format for the response, dictating whether to return full content or just metadata.",
+            "description": "The desired format for the response.",
             "type": "string",
             "enum": ["metadata_only", "selective_context"],
         },
@@ -209,15 +209,19 @@ def deconstruct_query(
             plan = json.loads(content_str)  # pyright: ignore
 
             logging.info("Successfully deconstructed query using JSON Schema.")
-            print("**** PLAN IN JSON ****")
-            print(plan)
-            print("**** END PRINT PLAN ****")
             return plan
 
         except json.JSONDecodeError as e:
             logging.error(
                 f"JSON decoding failed on attempt {attempt + 1}: {e}\nRaw content: {content_str}"  # pyright: ignore
             )
+            logging.info("Attempting manual JSON parsing fallback...")
+            try:
+                plan = _manual_json_parse(content_str)
+                if plan:
+                    return plan
+            except Exception:  # noqa: BLE001
+                logging.warning("Manual JSON parsing also failed.")
         except Exception as e:
             logging.error(
                 f"An API call or unexpected error occurred on attempt {attempt + 1}: {e}"
@@ -229,3 +233,57 @@ def deconstruct_query(
             time.sleep(wait_time)
 
     raise RuntimeError(f"Failed to get a valid response after {max_retries} attempts.")
+
+
+def _manual_json_parse(content: str) -> dict:
+    """
+    Fallback function to manually extract JSON from the LLM response
+    when structured JSON schema parsing fails.
+    """
+    import re
+    
+    # Try to find JSON object in the content
+    json_pattern = r'\{[^{}]*"semantic_search_needed"[^{}]*\}'
+    match = re.search(json_pattern, content.strip())
+    
+    if not match:
+        # Try broader JSON object pattern
+        json_pattern = r'\{[^{}]*"semantic_query"[^{}]*\}'
+        match = re.search(json_pattern, content.strip())
+    
+    if not match:
+        # Try even broader JSON object pattern
+        json_pattern = r'\{[^{}]*\}'
+        matches = re.findall(json_pattern, content.strip())
+        
+        # Look for a candidate with required fields
+        for json_str in matches:
+            try:
+                parsed = json.loads(json_str)
+                if all(key in parsed for key in ["semantic_search_needed", "filters", "response_format"]):
+                    # Ensure semantic_query is present (can be empty string)
+                    if "semantic_query" not in parsed:
+                        parsed["semantic_query"] = ""
+                    return parsed
+            except json.JSONDecodeError:
+                continue
+    
+    if match:
+        try:
+            parsed = json.loads(match.group())
+            # Ensure all required fields are present
+            if all(key in parsed for key in ["semantic_search_needed", "filters", "response_format"]):
+                if "semantic_query" not in parsed:
+                    parsed["semantic_query"] = ""
+                return parsed
+        except json.JSONDecodeError:
+            pass
+    
+    # Return a default fallback plan
+    logging.warning("Using default fallback query plan")
+    return {
+        "semantic_search_needed": True,
+        "semantic_query": content.strip(),
+        "filters": [],
+        "response_format": "selective_context"
+    }
