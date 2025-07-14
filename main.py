@@ -1,94 +1,135 @@
-import glob
+import unittest
 import os
-import chromadb
+import sys
+import glob
+import shutil
+
+# This allows the test runner to find modules in the parent directory
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+# LangChain and project-specific imports
+from langchain_community.vectorstores import Chroma
+from langchain_core.documents import Document
+
 from note import Note
 from embed import llama_embedder, create_embedding_text
+from retriever import retrieve_context
 
 
-def main():
-    print("Starting RAG PoC...")
+class TestRetrieverIntegration(unittest.TestCase):
+    """
+    Integration tests for the Retriever module, refactored to use the
+    correct, modern LangChain-idiomatic approach for database population.
+    """
 
-    # 1. Instantiate ChromaDB client and collection
-    try:
-        chroma_client = chromadb.PersistentClient(path="./chromadb")
-        collection = chroma_client.get_or_create_collection(name="obsidian_notes")
-        print("✅ ChromaDB client and collection initialized.")
-    except Exception as e:
-        print(f"❌ Error initializing ChromaDB: {e}")
-        return
+    @classmethod
+    def setUpClass(cls):
+        """
+        Set up a temporary ChromaDB database using LangChain's Chroma wrapper,
+        which handles the embedding process automatically via the `.from_documents()` method.
+        """
+        cls.db_path = "./test_chroma_db_lc"
+        cls.collection_name = "test_retriever_lc_collection"
+        cls.note_files_path = "obsidian-rag-project/test_notes/*.md"
 
-    # 2. Find all notes in the test_notes directory
-    note_files = glob.glob("test_notes/*.md")
-    if not note_files:
-        print("❌ No notes found in 'test_notes/' directory.")
-        return
+        if os.path.exists(cls.db_path):
+            shutil.rmtree(cls.db_path)
 
-    print(f"Found {len(note_files)} notes to process.")
+        note_files = glob.glob(cls.note_files_path)
+        if not note_files:
+            raise FileNotFoundError(
+                f"No test notes found at path: {cls.note_files_path}"
+            )
 
-    all_documents = []
-    all_metadatas = []
-    all_ids = []
-
-    # 3. Process each note
-    for note_file in note_files:
-        try:
+        # 1. Prepare LangChain Document objects from your source files
+        langchain_docs = []
+        cls.sections_per_note = {}
+        for note_file in note_files:
             note = Note.from_file(note_file)
-            print(f"  - Processing Note: {note.title}")
-
-            # 4. Chunk by heading and prepare for embedding
+            cls.sections_per_note[note.title] = len(note.content_sections)
             for section in note.content_sections:
-                # Create a unique ID for each section
-                section_id = f"{note.file_path}::{section.heading}"
-
-                # Prepare the text for embedding
                 embedding_text = create_embedding_text(
-                    title=note.title, heading=section.heading, content=section.content
+                    note.title, section.heading, section.content
                 )
-
-                # Prepare the metadata
                 metadata = {
                     "title": note.title,
                     "file_path": note.file_path,
-                    "created_date": str(note.created_date),
-                    "modified_date": str(note.modified_date),
-                    "tags": ", ".join(note.tag_wikilinks),
-                    "wikilinks": ", ".join(note.wikilinks),
+                    "created_date": note.created_date.isoformat(),
+                    "modified_date": note.modified_date.isoformat(),
+                    "tags": note.tag_wikilinks,
+                    "wikilinks": note.wikilinks,
                     "heading": section.heading,
                     "level": section.level,
                 }
 
-                all_documents.append(embedding_text)
-                all_metadatas.append(metadata)
-                all_ids.append(section_id)
+                # Create a LangChain Document for each section
+                doc = Document(page_content=embedding_text, metadata=metadata)
+                langchain_docs.append(doc)
 
-        except Exception as e:
-            print(f"❌ Error processing note {note_file}: {e}")
-
-    # 5. Add all documents to ChromaDB in a single batch
-    if all_documents:
-        try:
-            collection.add(
-                documents=all_documents,
-                metadatas=all_metadatas,
-                ids=all_ids,
-            )
-            print(
-                f"\n✅ Successfully added {len(all_documents)} documents to ChromaDB."
+        # 2. Use the CORRECT LangChain method to create and populate the collection in one step.
+        # This is the key change. `from_documents` creates the embeddings and stores them.
+        if langchain_docs:
+            cls.vectorstore = Chroma.from_documents(
+                documents=langchain_docs,
+                embedding=llama_embedder,
+                collection_name=cls.collection_name,
+                persist_directory=cls.db_path,
             )
 
-            # Optional: Verify by querying the collection
-            retrieved_items = collection.get(limit=5)
-            print("\n--- Sample of items in ChromaDB ---")
-            for i, item_id in enumerate(retrieved_items["ids"]):
-                print(f"  ID: {item_id}")
-                print(f"  Metadata: {retrieved_items['metadatas'][i]}")  # pyright: ignore
-            print("-" * 35)
+        # 3. For testing, we need the raw chromadb collection object that our retriever function expects.
+        # We can get this directly from the LangChain vectorstore object.
+        cls.collection = cls.vectorstore._collection
 
-        except Exception as e:
-            print(f"❌ Error adding documents to ChromaDB: {e}")
+    @classmethod
+    def tearDownClass(cls):
+        """Clean up the temporary ChromaDB database after all tests."""
+        if os.path.exists(cls.db_path):
+            shutil.rmtree(cls.db_path)
 
-    print("\nPoC finished.")
+    # --- Test cases remain unchanged as they operate on the final collection ---
+
+    def test_semantic_query_returns_relevant_context(self):
+        """Test a conceptual query returns relevant, deduplicated results."""
+        query_plan = {
+            "semantic_search_needed": True,
+            "semantic_query": "How to evade detection?",
+            "filters": [],
+            "response_format": "selective_context",
+        }
+        context_package = retrieve_context(query_plan, self.collection)
+        self.assertIn("results", context_package)
+        self.assertGreater(len(context_package["results"]), 0)
+        self.assertEqual(
+            context_package["results"][0]["title"],
+            "Evading Detection when Transferring Files",
+        )
+
+    def test_metadata_get_does_not_deduplicate_results(self):
+        """CRITICAL: Test the 'get' path returns all matching sections."""
+        note_title_to_test = "Filtering Redirector"
+        expected_sections = self.sections_per_note.get(note_title_to_test, 0)
+        self.assertGreater(
+            expected_sections,
+            1,
+            f"Test setup error: Note '{note_title_to_test}' must have multiple sections.",
+        )
+
+        query_plan = {
+            "semantic_search_needed": False,
+            "semantic_query": "",
+            "filters": [
+                {"field": "title", "operator": "$eq", "value": note_title_to_test}
+            ],
+            "response_format": "selective_context",
+        }
+        context_package = retrieve_context(query_plan, self.collection)
+        self.assertIn("results", context_package)
+        self.assertEqual(
+            len(context_package["results"]),
+            expected_sections,
+            "A 'get' op should not deduplicate results.",
+        )
 
 
 if __name__ == "__main__":
-    main()
+    unittest.main()
