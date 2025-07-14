@@ -1,135 +1,206 @@
-import unittest
+#!/usr/bin/env python3
+"""
+RAG Micro-Agent Main Entry Point
+
+This module provides the main CLI interface for the RAG micro-agent,
+implementing the query planner → retriever → response pipeline as specified
+in the technical specification.
+"""
+
+import argparse
 import os
 import sys
-import glob
-import shutil
+import json
+import logging
+from typing import Dict, Any, Optional
 
-# This allows the test runner to find modules in the parent directory
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+# Add current directory to path for imports
+sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
-# LangChain and project-specific imports
 from langchain_community.vectorstores import Chroma
-from langchain_core.documents import Document
 
-from note import Note
-from embed import llama_embedder, create_embedding_text
+from query_planner import deconstruct_query
 from retriever import retrieve_context
+from embed import llama_embedder
+from config import LLMConfig, validate_config
 
 
-class TestRetrieverIntegration(unittest.TestCase):
-    """
-    Integration tests for the Retriever module, refactored to use the
-    correct, modern LangChain-idiomatic approach for database population.
-    """
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
 
-    @classmethod
-    def setUpClass(cls):
+
+class RAGMicroAgent:
+    """Main RAG micro-agent class that orchestrates query processing."""
+
+    def __init__(
+        self,
+        config: Optional[LLMConfig] = None,
+    ):
         """
-        Set up a temporary ChromaDB database using LangChain's Chroma wrapper,
-        which handles the embedding process automatically via the `.from_documents()` method.
+        Initialize the RAG micro-agent.
+
+        Args:
+            config: LLMConfig object, defaults to env configuration if not provided
         """
-        cls.db_path = "./test_chroma_db_lc"
-        cls.collection_name = "test_retriever_lc_collection"
-        cls.note_files_path = "obsidian-rag-project/test_notes/*.md"
+        self.config = config or LLMConfig.from_env()
+        
+        # Validate configuration
+        validation = validate_config(self.config)
+        if not validation["can_proceed"]:
+            raise ValueError("Configuration validation failed: " + ", ".join(validation["issues"]))
+        
+        if validation["warnings"]:
+            for warning in validation["warnings"]:
+                logger.warning(warning)
 
-        if os.path.exists(cls.db_path):
-            shutil.rmtree(cls.db_path)
-
-        note_files = glob.glob(cls.note_files_path)
-        if not note_files:
-            raise FileNotFoundError(
-                f"No test notes found at path: {cls.note_files_path}"
-            )
-
-        # 1. Prepare LangChain Document objects from your source files
-        langchain_docs = []
-        cls.sections_per_note = {}
-        for note_file in note_files:
-            note = Note.from_file(note_file)
-            cls.sections_per_note[note.title] = len(note.content_sections)
-            for section in note.content_sections:
-                embedding_text = create_embedding_text(
-                    note.title, section.heading, section.content
-                )
-                metadata = {
-                    "title": note.title,
-                    "file_path": note.file_path,
-                    "created_date": note.created_date.isoformat(),
-                    "modified_date": note.modified_date.isoformat(),
-                    "tags": note.tag_wikilinks,
-                    "wikilinks": note.wikilinks,
-                    "heading": section.heading,
-                    "level": section.level,
-                }
-
-                # Create a LangChain Document for each section
-                doc = Document(page_content=embedding_text, metadata=metadata)
-                langchain_docs.append(doc)
-
-        # 2. Use the CORRECT LangChain method to create and populate the collection in one step.
-        # This is the key change. `from_documents` creates the embeddings and stores them.
-        if langchain_docs:
-            cls.vectorstore = Chroma.from_documents(
-                documents=langchain_docs,
-                embedding=llama_embedder,
-                collection_name=cls.collection_name,
-                persist_directory=cls.db_path,
-            )
-
-        # 3. For testing, we need the raw chromadb collection object that our retriever function expects.
-        # We can get this directly from the LangChain vectorstore object.
-        cls.collection = cls.vectorstore._collection
-
-    @classmethod
-    def tearDownClass(cls):
-        """Clean up the temporary ChromaDB database after all tests."""
-        if os.path.exists(cls.db_path):
-            shutil.rmtree(cls.db_path)
-
-    # --- Test cases remain unchanged as they operate on the final collection ---
-
-    def test_semantic_query_returns_relevant_context(self):
-        """Test a conceptual query returns relevant, deduplicated results."""
-        query_plan = {
-            "semantic_search_needed": True,
-            "semantic_query": "How to evade detection?",
-            "filters": [],
-            "response_format": "selective_context",
-        }
-        context_package = retrieve_context(query_plan, self.collection)
-        self.assertIn("results", context_package)
-        self.assertGreater(len(context_package["results"]), 0)
-        self.assertEqual(
-            context_package["results"][0]["title"],
-            "Evading Detection when Transferring Files",
+        # Initialize LangChain Chroma vectorstore
+        self.vectorstore = Chroma(
+            collection_name=self.config.collection_name,
+            embedding_function=llama_embedder,
+            persist_directory=self.config.db_path,
         )
 
-    def test_metadata_get_does_not_deduplicate_results(self):
-        """CRITICAL: Test the 'get' path returns all matching sections."""
-        note_title_to_test = "Filtering Redirector"
-        expected_sections = self.sections_per_note.get(note_title_to_test, 0)
-        self.assertGreater(
-            expected_sections,
-            1,
-            f"Test setup error: Note '{note_title_to_test}' must have multiple sections.",
-        )
+        logger.info(f"Initialized RAG micro-agent with collection: {self.config.collection_name}")
 
-        query_plan = {
-            "semantic_search_needed": False,
-            "semantic_query": "",
-            "filters": [
-                {"field": "title", "operator": "$eq", "value": note_title_to_test}
-            ],
-            "response_format": "selective_context",
-        }
-        context_package = retrieve_context(query_plan, self.collection)
-        self.assertIn("results", context_package)
-        self.assertEqual(
-            len(context_package["results"]),
-            expected_sections,
-            "A 'get' op should not deduplicate results.",
-        )
+    def query(self, user_query: str) -> Dict[str, Any]:
+        """
+        Process a user query through the full RAG pipeline.
+
+        Args:
+            user_query: Natural language query from user
+
+        Returns:
+            Dictionary containing the context package
+        """
+        logger.info(f"Processing query: {user_query}")
+
+        try:
+            # Step 1: Deconstruct query using query planner
+            query_plan = deconstruct_query(user_query)
+            logger.info(f"Generated query plan: {json.dumps(query_plan, indent=2)}")
+
+            # Step 2: Execute retrieval using retriever interface
+            context_package = retrieve_context(query_plan, self.vectorstore)
+            logger.info(f"Retrieved {len(context_package.get('results', []))} results")
+
+            return context_package
+
+        except Exception as e:
+            logger.error(f"Error processing query: {str(e)}")
+            raise
+
+    def get_collection_stats(self) -> Dict[str, Any]:
+        """Get statistics about the current collection."""
+        try:
+            # Get count via underlying collection
+            count = self.vectorstore._collection.count()
+            return {
+                "collection_name": self.config.collection_name,
+                "document_count": count,
+                "db_path": self.config.db_path,
+            }
+        except Exception as e:
+            logger.error(f"Error getting collection stats: {str(e)}")
+            return {"error": str(e)}
+
+
+def run_rag_query(user_query: str, db_path: str = "./chroma_db") -> Dict[str, Any]:
+    """
+    Convenience function to run a single RAG query.
+
+    Args:
+        user_query: Natural language query
+        db_path: Path to ChromaDB database
+
+    Returns:
+        Context package dictionary
+    """
+    agent = RAGMicroAgent(db_path=db_path)
+    return agent.query(user_query)
+
+
+def main():
+    """Main CLI entry point."""
+    parser = argparse.ArgumentParser(description="RAG Micro-Agent CLI")
+    parser.add_argument("query", nargs="?", help="Natural language query to process")
+    parser.add_argument(
+        "--db-path",
+        default="./chroma_db",
+        help="Path to ChromaDB database (default: ./chroma_db)",
+    )
+    parser.add_argument(
+        "--collection",
+        default="obsidian_notes",
+        help="Collection name (default: obsidian_notes)",
+    )
+    parser.add_argument(
+        "--stats", action="store_true", help="Show collection statistics"
+    )
+    parser.add_argument("--json", action="store_true", help="Output results as JSON")
+    parser.add_argument(
+        "--verbose", "-v", action="store_true", help="Enable verbose logging"
+    )
+
+    args = parser.parse_args()
+
+    if args.verbose:
+        logging.getLogger().setLevel(logging.DEBUG)
+
+    try:
+        # Create config from arguments via environment variables
+        import os
+        os.environ["CHROMA_DB_PATH"] = args.db_path
+        os.environ["CHROMA_COLLECTION_NAME"] = args.collection
+        agent = RAGMicroAgent()
+
+        if args.stats:
+            stats = agent.get_collection_stats()
+            if args.json:
+                print(json.dumps(stats, indent=2))
+            else:
+                print(f"Collection: {stats['collection_name']}")
+                print(f"Documents: {stats['document_count']}")
+                print(f"Database: {stats['db_path']}")
+            return
+
+        if not args.query:
+            parser.error("Query is required unless --stats is used")
+
+        # Process the query
+        result = agent.query(args.query)
+
+        if args.json:
+            print(json.dumps(result, indent=2))
+        else:
+            print(f"Query: {args.query}")
+            print(f"Found {len(result.get('results', []))} results:")
+            print()
+
+            for i, item in enumerate(result.get("results", []), 1):
+                print(f"{i}. {item.get('title', 'Unknown')}")
+                if "heading" in item:
+                    print(f"   Section: {item['heading']}")
+                if "tags" in item and item["tags"]:
+                    print(f"   Tags: {', '.join(item['tags'])}")
+                if "content" in item:
+                    content = (
+                        item["content"][:200] + "..."
+                        if len(item["content"]) > 200
+                        else item["content"]
+                    )
+                    print(f"   Content: {content}")
+                print()
+
+    except KeyboardInterrupt:
+        print("\nOperation cancelled by user")
+        sys.exit(1)
+    except Exception as e:
+        logger.error(f"Error: {str(e)}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
-    unittest.main()
+    main()
