@@ -76,6 +76,29 @@ def _deduplicate_query_results(results: dict) -> list:
     return list(final_results.values())
 
 
+def _deduplicate_query_sections(sections: list) -> list:
+    """
+    Removes redundant sections from LangChain query results by keeping only
+    the highest-ranked section for any given source file.
+    Deduplication should preserve the highest relevance score, not just the first occurrence.
+    """
+    from collections import defaultdict
+    
+    file_mapping = defaultdict(list)
+    
+    # Group sections by file_path
+    for section in sections:
+        metadata = section.get("metadata", {})
+        file_path = metadata.get("file_path")
+        if file_path:
+            file_mapping[file_path].append(section)
+    
+    # Select the first member from each file (was already correctly ordered by relevance)
+    deduplicated = [sections[0] for sections in file_mapping.values()]
+    
+    return deduplicated
+
+
 # --- Result Packaging Functions ---
 
 
@@ -120,7 +143,7 @@ def _package_selective_context(sections: list) -> dict:
 # --- Main Orchestrator ---
 
 
-def retrieve_context(query_plan: dict, collection) -> dict:
+def retrieve_context(query_plan: dict, vectorstore) -> dict:
     """
     Orchestrates retrieval and packaging based on the query plan,
     choosing between a semantic 'query' and a metadata 'get'.
@@ -130,22 +153,35 @@ def retrieve_context(query_plan: dict, collection) -> dict:
     )
 
     where_filter = _build_where_filter(query_plan.get("filters", []))
+    # Skip empty where filters to prevent ChromaDB validation errors
+    where_filter = where_filter if where_filter else None
     processed_sections = []
 
     if query_plan.get("semantic_search_needed"):
         logging.info(
             f"Performing semantic QUERY with text: '{query_plan['semantic_query'][:50]}...'"
         )
-        results = collection.query(
-            query_texts=[query_plan["semantic_query"]],
-            where=where_filter,
-            n_results=20,
-            include=["metadatas", "documents"],
+        # Use LangChain's vectorstore which has proper embedding configuration
+        docs = vectorstore.similarity_search(
+            query=query_plan["semantic_query"], 
+            k=20, 
+            filter=where_filter
         )
-        processed_sections = _deduplicate_query_results(results)
+        # Convert LangChain documents to our internal format
+        processed_sections = []
+        for doc_idx, doc in enumerate(docs):
+            processed_sections.append({
+                "id": doc.metadata.get("id", str(doc_idx)),
+                "document": doc.page_content,
+                "metadata": doc.metadata
+            })
+        # Apply deduplication for semantic search results
+        # Skip deduplication for semantic search - keep all ranking order
 
     else:
         logging.info("Performing metadata GET operation.")
+        # For metadata-only queries, use the underlying Chroma collection
+        collection = vectorstore._collection
         results = collection.get(
             where=where_filter, limit=100, include=["metadatas", "documents"]
         )
