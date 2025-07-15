@@ -5,10 +5,14 @@
 - ✅ **Data Models**: Note parsing, content sections, metadata extraction complete
 - ✅ **Embedding Pipeline**: Local embedding models integrated with LangChain-ChromaDB
 - ✅ **Retriever Logic**: Deduplication, response packaging, query handling implemented
-- ✅ **Test Framework**: Integration tests with temporary ChromaDB instances
-- ❌ **Query Planner**: Draft exists but needs validation and JSON schema fixes  
-- ❌ **End-to-End Integration**: Main.py doesn't match retriever interface
-- ❌ **Environment Setup**: Configuration management and dependency validation needed
+- ✅ **Test Framework**: Unit tests passing 24/24, integration tests use temporary ChromaDB
+- ✅ **Query Planner**: Working with JSON schema validation and fallback
+- ✅ **LLM Client**: Configuration abstraction with env variable handling complete
+- ✅ **Main Integration**: RAGMicroAgent class fully implemented
+- ❌ **Real Data Integration**: No note ingestion pipeline for actual notes
+- ❌ **ChromaDB Population**: Collections exist but contain no real note embeddings
+- ❌ **Embedding Generation**: Components exist but not connected for vault processing
+- ❌ **Integration Tests**: test_agent.py broken (references deleted agent.py)
 
 ## MVP Completion Roadmap
 
@@ -32,16 +36,27 @@
   - [x] Add comprehensive validation and warnings
   - [x] Provide .env template for easy setup
 
-### Phase 2: Validation & Testing (Priority: HIGH)
-- [ ] **Fix Test Failures**
-  - [ ] Run full test suite: `python -m unittest discover tests/`
-  - [ ] Debug retriever.py query vs get path logic
-  - [ ] Validate deduplication behavior for both semantic and metadata searches
+### Phase 2: Real Data Integration (Priority: HIGH)
+**Phase 2.1: Note Ingestion Pipeline**
+- [ ] Create note-to-embedding batch processor
+- [ ] Implement vault directory scanning and Note parsing
+- [ ] Connect local embedding generation with note processing
+- [ ] Add progress logging for large vault imports
+- [ ] Handle note updates and re-indexing
 
-- [ ] **Integration Testing**
-  - [ ] Fix TestAgentMilestone1 to use temporary ChromaDB
-  - [ ] Test end-to-end query flow: query→plan→retrieve→package
-  - [ ] Validate response formats match PRD specifications
+**Phase 2.2: Embedding Generation System**
+- [ ] Build worker to process all notes into embeddings
+- [ ] Chunk large notes for better retrieval granularity
+- [ ] Preserve metadata during embedding generation
+- [ ] Add error handling for malformed notes
+- [ ] Implement idempotent re-indexing (handle note changes)
+
+**Phase 2.3: Testing with Real Data**
+- [ ] Fix TestAgentMilestone1 to use main.RAGMicroAgent (vs deleted agent.py)
+- [ ] Update integration tests to use populated collections
+- [ ] Validate end-to-end query→plan→retrieve→package flow with real notes
+- [ ] Test semantic search accuracy with actual content
+- [ ] Document test data validation procedures
 
 ### Phase 3: Environment & Setup (Priority: MEDIUM)
 - [ ] **Dependency Management**
@@ -99,12 +114,27 @@ python -m unittest tests/test_agent.py  # Expected: FAIL due to broken imports
 python main.py                          # Expected: FAIL with empty/missing collection
 ```
 
-## Success Criteria Checklist
+## Updated Validation Commands
+```bash
+# Environment setup
+export OPENROUTER_API_KEY="your-key"
+export MODEL_PATH="./data/models/Qwen3-Embedding-0.6B-f16.gguf"
+
+# Phase 2 validation (what will work)
+python main.py --stats  # Check collection is populated
+python main.py "find my notes about RAG"  # Real semantic search
+python -m unittest tests/integration/test_agent.py  # Fixed integration tests
+
+# Development workflow
+python scripts/ingest_notes.py --vault-dir ./data/sample_notes  # Populate embeddings
+python scripts/rebuild_index.py  # Re-index updated notes
+```
+
+## Phase 2 Success Criteria
 - [ ] test_agent.py refactored to use main.RAGMicroAgent
-- [ ] System can generate embeddings from actual note files
-- [ ] ChromaDB populated with real note content
-- [ ] End-to-end query processing works with actual data
-- [ ] All tests pass including integration with real collection
-- Query result highlighting/excerpts
-- Graph-based relationship discovery
-- Export functionality for retrieved contexts
+- [ ] Note ingestion pipeline processes vault directory → embeddings → ChromaDB  
+- [ ] Semantic search returns accurate results from real note content
+- [ ] All integration tests pass with populated database
+- [ ] CLI supports vault indexing commands
+- [ ] Re-indexing handles note updates and additions
+- [ ] Large vault processing includes progress reporting
