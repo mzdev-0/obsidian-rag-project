@@ -59,10 +59,11 @@ graph TD
 
 ### Tech Stack
 -   **Language**: Python
--   **Vector Database**: ChromaDB (stores embeddings and filterable metadata)
--   **LLM Framework**: LangChain
--   **Embedding Model**: `Qwen/Qwen3-0.6B-Instruct-GGUF` 
--   **Query Planner LLM**: A local or API-based LLM tasked with query deconstruction.
+-   **Vector Database**: ChromaDB with LangChain integration
+-   **LLM Framework**: JSON schema validation with OpenAI-compatible endpoints
+-   **Embedding Model**: LLAMA3-GGUF local models (`models/ directory`)
+-   **Query Planner LLM**: Configurable via OPENROUTER_API_KEY or local endpoint
+-   **Config Management**: `config.py` for unified configuration
 
 ### Data Structures
 The system's data representation is designed to capture the rich structure of markdown notes, based on `note.py` and `parsing.py`.
@@ -90,16 +91,17 @@ class Note:
     content_sections: List[ContentSection] # The note's body, chunked by heading
 ```
 
-### Stored Metadata in ChromaDB
-Each `ContentSection` is stored in ChromaDB with the following filterable metadata, based on `main.py`:
+### Stored Metadata in ChromaDB  
+Each `ContentSection` is stored in ChromaDB with the following filterable metadata, based on actual implementation:
 -   `title`: The title of the note.
 -   `file_path`: The original file path.
 -   `created_date`: Note creation date (ISO string).
 -   `modified_date`: Note modification date (ISO string).
--   `tags`: Comma-separated string of wikilinks found in the `Tags` section.
--   `wikilinks`: Comma-separated string of wikilinks not found in the `Tags` section.
+-   `tags`: List of wikilinks from the `Tags` section.
+-   `wikilinks`: List of wikilinks not in `Tags` section.
 -   `heading`: The heading of the specific section.
 -   `level`: The heading level (1-6).
+-   **Note:** Currently no production ChromaDB exists - this is the target schema.
 
 ## 4. Response Formats
 
@@ -134,14 +136,14 @@ The micro-agent will deliver one of two context packages, as determined by the Q
 
 ## 5. Success Metrics
 
-### Functional Requirements
+### Functional Requirements - CURRENT STATE
 -   [x] Extract metadata from note files (`note.py`, `parsing.py`).
--   [x] Generate clean embeddings for text sections (`embed.py`).
--   [x] Store documents and metadata in ChromaDB (`main.py`).
--   [ ] Implement the Query Planner LLM to generate structured JSON.
--   [ ] Implement the Hybrid Retriever using the planner's output.
--   [ ] Implement context deduplication logic.
--   [ ] Implement the two-tiered response packaging (`metadata_only`, `selective_context`).
+-   [ ] Generate clean embeddings for text sections - **INCOMPLETE** No actual embedding generation
+-   [ ] Store documents and metadata in ChromaDB - **INCOMPLETE** Tests create temp DBs only
+-   [x] Implement the Query Planner LLM to generate structured JSON.
+-   [x] Implement the Hybrid Retriever using the planner's output.
+-   [x] Implement context deduplication logic.
+-   [x] Implement the two-tiered response packaging (`metadata_only`, `selective_context`).
 
 ### Project Completion Tests
 The project is successful when the parent LLM can successfully use the micro-agent to answer these queries, demonstrating the full retrieval pipeline.

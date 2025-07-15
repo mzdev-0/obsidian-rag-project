@@ -1,49 +1,74 @@
-## RAG Micro-Agent: Development Roadmap
+## RAG Micro-Agent: Development Roadmap - REVISED FOR REALITY
 
-This roadmap outlines a three-milestone plan to build, smarten, and stabilize the RAG micro-agent. Each milestone delivers a significant piece of functionality and concludes with a clear definition of what "done" looks like.
+**Updated to reflect actual implementation vs aspirational goals.**
 
----
+This roadmap tracks what is actually working vs what remains to be implemented.
+- ✅ = Actually implemented and working
+- 🟡 = Partially implemented, needs real data
+- ❌ = Not started or broken
 
-### **Milestone 1: Building the Core Retrieval Pipeline**
-
-**Goal**: To create a functional, end-to-end pipeline that can execute a query plan and retrieve deduplicated content. This milestone focuses entirely on the `selective_context` path to prove the core mechanics work.
-
-*   **Feature 1: Query Planner Engine**
-    *   **Task**: Implement the `deconstruct_query` function in a `query_planner.py` module. This function must take a user query, use an LLM to generate a structured JSON plan, and include robust JSON parsing with a retry-on-failure loop.
-
-*   **Feature 2: Hybrid Search & Deduplication**
-    *   **Task**: Implement the core `retrieve_context` function in a `retriever.py` module. This involves two key pieces of logic:
-        1.  Dynamically building a ChromaDB `where` filter from the query plan's `filters` list.
-        2.  Implementing and applying the `_deduplicate_results` logic to the raw output of the `collection.query` to ensure only the most relevant, non-redundant sections are kept.
-
-*   **Definition of Done**: The system can execute a hard-coded query plan. When `retrieve_context` is called with a plan, it successfully returns a clean Python list of deduplicated section objects, each containing its content and metadata. The core retrieval and processing logic is now validated.
+## Blockers Identified:
+1. **Broken integration testing** - test_agent.py references deleted agent.py
+2. **No embedding generation** - Collections exist but aren't populated
+3. **No note ingestion pipeline** - Can't turn real notes into searchable embeddings
 
 ---
 
-### **Milestone 2: Implementing Adaptive Intelligence**
+### **Milestone 1: Building the Core Retrieval Pipeline - COMPLETED ✅**
 
-**Goal**: To make the agent "smart" by activating the query planner and enabling the dual-response formatting. The agent will now decide *how* to answer.
+**Goal**: To create a functional, end-to-end pipeline that can execute a query plan and retrieve deduplicated content.
 
-*   **Feature 1: Intelligent Response Formatting**
-    *   **Task**: Implement the two packaging functions in `retriever.py`: `_package_metadata_only` and `_package_selective_context`.
-    *   **Task**: Upgrade `retrieve_context` to be the final orchestrator. It must now read the `response_format` from the query plan and use conditional logic to route the deduplicated results to the correct packaging function.
+*   **Feature 1: Query Planner Engine** ✅ DONE
+    *   Implemented `deconstruct_query` with JSON schema validation
+    *   Robust JSON parsing with manual fallback
+    *   Uses configurable LLM endpoints via environment variables
 
-*   **Feature 2: Activating the Live Planner**
-    *   **Task**: Create the main `agent.py` module and the primary entry point `run_rag_query(user_query: str)`.
-    *   **Task**: This function will now orchestrate the full, live pipeline: it first calls `deconstruct_query` to get a dynamic plan, then immediately passes that plan to `retrieve_context` to get the final, formatted package.
+*   **Feature 2: Hybrid Search & Deduplication** ✅ DONE
+    *   Implemented `retrieve_context` using LangChain Chroma vectorstore
+    *   Dynamic ChromaDB filter generation working
+    *   File-based deduplication (`_deduplicate_query_sections`) implemented
+    *   Dual-path: semantic vs metadata queries supported
 
-*   **Definition of Done**: The `run_rag_query` function is fully operational. It can autonomously handle a natural language query from start to finish. It correctly chooses the response format, and a query like `"find my notes about RAG"` successfully returns a `metadata_only` package, while `"what did I write about ChromaDB filters?"` returns a `selective_context` package.
+*   **Definition of Done**: ✅ ACHIEVED
 
 ---
 
-### **Milestone 3: Hardening and Validation**
+### **Milestone 2: Implementing Adaptive Intelligence - NEARLY COMPLETE**
 
-**Goal**: To transform the functional agent into a reliable, production-ready tool through comprehensive testing.
+**Goal**: Smart decision-making with live query planner and dual-response formatting.
 
-*   **Feature 1: Unit Test Coverage**
-    *   **Task**: Develop a suite of unit tests for the critical helper functions. This must include tests for the `_build_where_filter` logic, the `_deduplicate_results` algorithm, and the JSON parsing within the query planner (using a mocked LLM).
+*   **Feature 1: Intelligent Response Formatting** ✅ COMPLETE
+    *   `_package_metadata_only` and `_package_selective_context` implemented
+    *   `retrieve_context` uses protocol based on query planner decisions
 
-*   **Feature 2: End-to-End Integration Testing**
-    *   **Task**: Implement a set of integration tests that validate the entire workflow defined in `run_rag_query`. These tests should use a dedicated, pre-populated test collection in ChromaDB and validate the final output against the scenarios laid out in the "Project Completion Tests" section of the PRD.
+*   **Feature 2: Activating the Live Planner** ✅ COMPLETE
+    *   Implemented via `main.py` `RAGMicroAgent` class (not deleted agent.py)
+    *   Full orchestration: `query()` → `deconstruct_query()` → `retrieve_context()`
+    *   Smart response format selection working
 
-*   **Definition of Done**: The project has a robust test suite that provides confidence in its correctness and allows for future refactoring. The micro-agent is now considered stable, reliable, and ready for integration as a tool in a parent LLM system.
+*   **Definition of Done**: 🟡 PARTIALLY ACHIEVED
+    - Full pipeline exists but requires populated ChromaDB to work with real data
+    - Missing embedding generation from actual note vault
+
+---
+
+### **Milestone 3: Hardening and Validation - IN PROGRESS 🔄**
+
+**Goal**: Production-ready tool with comprehensive testing.
+
+*   **Feature 1: Unit Test Coverage** ✅ COMPLETE
+    *   Critical helper functions tested (_build_where_filter, deduplication, JSON parsing)
+    *   Query planner integration tests passing
+    *   Note parsing and metadata extraction tested
+    *   **Status**: 24/24 unit tests passing
+
+*   **Feature 2: End-to-End Integration Testing** ❌ INCOMPLETE
+    *   **test_agent.py broken**: Still references deleted `agent.py` 
+    *   **Missing collection population**: Tests create temp DBs but can't populate from real data
+    *   **Need to refactor**: Update integration tests to use `main.RAGMicroAgent`
+    *   **Need to implement**: Actual note ingestion and embedding generation
+
+*   **Definition of Done**: 🟡 BLOCKED
+    - Unit tests complete
+    - Integration testing requires fixing test infrastructure
+    - Note ingestion pipeline needed for real-world validation
