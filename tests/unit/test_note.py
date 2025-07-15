@@ -11,7 +11,8 @@ from src.core.note import Note
 
 class TestNoteInstantiation(unittest.TestCase):
     def test_create_note_from_file(self):
-        test_notes_path = "/home/cas/projects/obsidian-rag-project/data/sample_notes/*.md"
+        repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        test_notes_path = os.path.join(repo_root, "data", "sample_notes", "*.md")
         test_note_files = glob.glob(test_notes_path)
 
         for note_file in test_note_files:

@@ -32,8 +32,8 @@ class TestAgentEndToEnd(unittest.TestCase):
         cls.collection_name = "test_agent_collection"
         
         # Point the agent to use this test DB path instead of the default
-        # We do this by patching the chromadb.PersistentClient call in agent.py
-        cls.client_patcher = patch('agent.chromadb.PersistentClient')
+        # We do this by patching the chromadb.PersistentClient call in main.py
+        cls.client_patcher = patch('main.chromadb.PersistentClient')
         cls.mock_client = cls.client_patcher.start()
         
         # Clean up any previous test runs
@@ -48,7 +48,7 @@ class TestAgentEndToEnd(unittest.TestCase):
         cls.mock_client.return_value = cls.chroma_client
         
         # 2. Process and embed notes
-        note_files = glob.glob("obsidian-rag-project/test_notes/*.md")
+        note_files = glob.glob("data/sample_notes/*.md")
         all_documents = [create_embedding_text(n.title, s.heading, s.content) for n in [Note.from_file(f) for f in note_files] for s in n.content_sections]
         all_metadatas = [
             {

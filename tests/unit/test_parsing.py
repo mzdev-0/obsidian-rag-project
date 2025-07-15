@@ -32,11 +32,12 @@ class ContentSection:
 
 class TestHeadingParsing(unittest.TestCase):
     def _read_test_note(self, filename):
-        # Corrected path to be relative to the project root where tests are run
+        # Relative to test file location
+        repo_root = os.path.dirname(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        )
         with open(
-            os.path.join(
-                "/home/cas/projects/obsidian-rag-project/test_notes", filename
-            ),
+            os.path.join(repo_root, "data", "sample_notes", filename),
             "r",
         ) as f:
             return f.read()

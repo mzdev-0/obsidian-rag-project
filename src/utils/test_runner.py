@@ -46,7 +46,7 @@ class TestRetrieverIntegration(unittest.TestCase):
         """
         cls.db_path = "./test_chroma_db_lc"
         cls.collection_name = "test_retriever_lc_collection"
-        cls.note_files_path = "test_notes/*.md"
+        cls.note_files_path = "data/sample_notes/*.md"
 
         if os.path.exists(cls.db_path):
             shutil.rmtree(cls.db_path)
@@ -55,9 +55,9 @@ class TestRetrieverIntegration(unittest.TestCase):
         if not note_files:
             # Try alternative paths
             alt_paths = [
-                "obsidian-rag-project/test_notes/*.md",
-                "../test_notes/*.md",
-                "./test_notes/*.md",
+                "obsidian-rag-project/data/sample_notes/*.md",
+                "../data/sample_notes/*.md",
+                "./data/sample_notes/*.md",
             ]
             for path in alt_paths:
                 note_files = glob.glob(path)
@@ -246,8 +246,8 @@ def main():
     parser = argparse.ArgumentParser(description="RAG Micro-Agent Test Runner")
     parser.add_argument(
         "--test-path",
-        default="test_notes/*.md",
-        help="Path pattern for test notes (default: test_notes/*.md)",
+        default="data/sample_notes/*.md",
+        help="Path pattern for test notes (default: data/sample_notes/*.md)",
     )
     parser.add_argument(
         "--db-path",

@@ -30,7 +30,8 @@ class TestRetrieverIntegration(unittest.TestCase):
         """
         cls.db_path = "../.test_chroma_db_persistent"
         cls.collection_name = "test_retriever_lc_collection"
-        cls.note_files_path = "/home/cas/projects/obsidian-rag-project/test_notes/*.md"
+        repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        cls.note_files_path = os.path.join(repo_root, "data", "sample_notes", "*.md")
         
         import hashlib
         
