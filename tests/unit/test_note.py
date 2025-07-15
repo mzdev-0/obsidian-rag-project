@@ -4,14 +4,14 @@ import glob
 import sys
 
 # Add the project root to the Python path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
-from note import Note
+from src.core.note import Note
 
 
 class TestNoteInstantiation(unittest.TestCase):
     def test_create_note_from_file(self):
-        test_notes_path = "/home/cas/projects/obsidian-rag-project/test_notes/*.md"
+        test_notes_path = "/home/cas/projects/obsidian-rag-project/data/sample_notes/*.md"
         test_note_files = glob.glob(test_notes_path)
 
         for note_file in test_note_files:

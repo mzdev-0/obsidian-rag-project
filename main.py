@@ -14,14 +14,14 @@ import json
 import logging
 from typing import Dict, Any, Optional
 
-# Add current directory to path for imports
-sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
+# Add src directory to path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
 from langchain_community.vectorstores import Chroma
 
-from query_planner import deconstruct_query
-from retriever import retrieve_context
-from embed import llama_embedder
+from core.query_planner import deconstruct_query
+from core.retriever import retrieve_context
+from core.embed import llama_embedder
 from config import LLMConfig, validate_config
 
 
@@ -111,7 +111,7 @@ class RAGMicroAgent:
             return {"error": str(e)}
 
 
-def run_rag_query(user_query: str, db_path: str = "./chroma_db") -> Dict[str, Any]:
+def run_rag_query(user_query: str, db_path: str = "./data/chroma_db") -> Dict[str, Any]:
     """
     Convenience function to run a single RAG query.
 
@@ -132,8 +132,8 @@ def main():
     parser.add_argument("query", nargs="?", help="Natural language query to process")
     parser.add_argument(
         "--db-path",
-        default="./chroma_db",
-        help="Path to ChromaDB database (default: ./chroma_db)",
+        default="./data/chroma_db",
+        help="Path to ChromaDB database (default: ./data/chroma_db)",
     )
     parser.add_argument(
         "--collection",

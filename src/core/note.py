@@ -2,7 +2,7 @@ import os
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import List, Optional
-import parsing
+from . import parsing
 
 Vector = List[float]
 

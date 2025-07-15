@@ -6,10 +6,10 @@ from datetime import datetime
 import sys
 
 # Add the project root to the Python path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
 # Assuming functions are in 'parsing.py' as per the project structure
-from parsing import (
+from src.core.parsing import (
     parse_headings,
     extract_wikilinks,
     parse_datetime,

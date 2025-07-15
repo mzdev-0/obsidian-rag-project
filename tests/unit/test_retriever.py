@@ -4,16 +4,16 @@ import sys
 import glob
 import shutil
 
-# This allows the test runner to find modules in the parent directory
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+# This allows the test runner to find modules in the project root
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
 # LangChain and project-specific imports
 from langchain_community.vectorstores import Chroma
 from langchain_core.documents import Document
 
-from note import Note
-from embed import llama_embedder, create_embedding_text
-from retriever import retrieve_context
+from src.core.note import Note
+from src.core.embed import llama_embedder, create_embedding_text
+from src.core.retriever import retrieve_context
 
 
 class TestRetrieverIntegration(unittest.TestCase):

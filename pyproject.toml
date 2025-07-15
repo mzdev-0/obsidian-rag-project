@@ -1,15 +1,26 @@
 [project]
 name = "obsidian-rag-project"
 version = "0.1.0"
-description = "Add your description here"
+description = "A RAG micro-agent for Personal Knowledge Management"
 readme = "README.md"
 requires-python = ">=3.12"
+packages = [
+    { include = "src" }
+]
 dependencies = [
     "chromadb>=1.0.15",
     "langchain-community>=0.2.10",
     "llama-cpp-python>=0.2.83",
     "uv>=0.2.11",
     "requests>=2.32.3",
+    "openai>=1.35.0",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
 [tool.basedpyright]
 reportCallIssue = "none"

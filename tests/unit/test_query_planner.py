@@ -6,7 +6,7 @@ import sys
 # in the parent directory. Uncomment if running this file directly.
 # sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from query_planner import deconstruct_query
+from src.core.query_planner import deconstruct_query
 
 
 class TestQueryPlannerIntegration(unittest.TestCase):

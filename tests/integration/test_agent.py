@@ -10,9 +10,9 @@ import shutil
 # Add the project root to the Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from agent import run_rag_query
-from note import Note
-from embed import llama_embedder, create_embedding_text
+from main import run_rag_query
+from src.core.note import Note
+from src.core.embed import llama_embedder, create_embedding_text
 
 class TestAgentEndToEnd(unittest.TestCase):
     """

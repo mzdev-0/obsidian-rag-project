@@ -26,7 +26,7 @@ class LLMConfig:
     use_local_embeddings: bool = True
     
     # ChromaDB configuration
-    db_path: str = "./chroma_db"
+    db_path: str = "./data/chroma_db"
     collection_name: str = "obsidian_notes"
     
     @classmethod
@@ -49,7 +49,7 @@ class LLMConfig:
         config.use_local_embeddings = os.getenv("USE_LOCAL_EMBEDDINGS", "true").lower() != "false"
         
         # Database settings
-        config.db_path = os.getenv("CHROMA_DB_PATH", "./chroma_db")
+        config.db_path = os.getenv("CHROMA_DB_PATH", "./data/chroma_db")
         config.collection_name = os.getenv("CHROMA_COLLECTION_NAME", "obsidian_notes")
         
         logger.info(f"Loaded config: use_online_llm={config.use_online_llm}, "
