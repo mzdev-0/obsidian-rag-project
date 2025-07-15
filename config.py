@@ -5,10 +5,17 @@ Handles environment variables, provider selection, and fallback chains.
 
 import os
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from dataclasses import dataclass
 
+# Try to import Langchain embeddings, with fallback
 logger = logging.getLogger(__name__)
+
+# Embedding model import with graceful fallback
+try:
+    from langchain_community.embeddings import LlamaCppEmbeddings
+except ImportError:
+    LlamaCppEmbeddings = None
 
 
 @dataclass
@@ -57,6 +64,36 @@ class LLMConfig:
                    f"db_path={config.db_path}")
         
         return config
+
+
+def get_embedding_function():
+    """
+    Get the configured embedding function based on environment settings.
+    Returns LlamaCppEmbeddings instance or raises RuntimeError if unavailable.
+    """
+    if LlamaCppEmbeddings is None:
+        raise RuntimeError("LlamaCppEmbeddings not available - install langchain-community")
+    
+    config = LLMConfig.from_env()
+    
+    if not config.use_local_embeddings:
+        raise RuntimeError("Local embeddings disabled")
+    
+    model_path = config.embedding_model_path or os.path.join(
+        os.path.dirname(__file__), "data", "models", "Qwen3-Embedding-0.6B-f16.gguf"
+    )
+    
+    # Validate model file exists
+    if not os.path.exists(model_path):
+        raise RuntimeError(f"Embedding model not found at: {model_path}")
+    
+    return LlamaCppEmbeddings(
+        model_path=model_path,
+        n_gpu_layers=-1,
+        n_batch=512,
+        n_ctx=32768,
+        verbose=False,
+    )
 
 
 def validate_config(config: LLMConfig) -> Dict[str, Any]:

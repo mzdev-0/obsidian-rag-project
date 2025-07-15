@@ -147,6 +147,15 @@ def main():
     parser.add_argument(
         "--verbose", "-v", action="store_true", help="Enable verbose logging"
     )
+    parser.add_argument(
+        "--index",
+        help="Path to vault directory to index notes from"
+    )
+    parser.add_argument(
+        "--reset", 
+        action="store_true", 
+        help="Clear existing collection before indexing"
+    )
 
     args = parser.parse_args()
 
@@ -171,8 +180,25 @@ def main():
                 print(f"Database: {stats['db_path']}")
             return
 
+        if args.index:
+            result = agent.index_vault(args.index, reset=args.reset)
+            if args.json:
+                print(json.dumps(result, indent=2))
+            else:
+                status = "✅ Completed" if result["status"] == "completed" else "❌ Failed"
+                print(f"{status}")
+                print(f"Files processed: {result['files_processed']}/{result['files_found']}")
+                print(f"Documents added: {result['documents_added']}")
+                if result["errors"]:
+                    print(f"Errors: {len(result['errors'])}")
+                    for error in result["errors"]:
+                        print(f"  - {error}")
+                if result["elapsed_time"] > 0:
+                    print(f"Time elapsed: {result['elapsed_time']:.2f}s")
+            return
+
         if not args.query:
-            parser.error("Query is required unless --stats is used")
+            parser.error("Query is required unless --stats or --index is used")
 
         # Process the query
         result = agent.query(args.query)
