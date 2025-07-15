@@ -12,9 +12,16 @@ __pycache__/
 
 # C extensions
 *.so
-chromadb/
+
+# New data directory structure
+data/chroma_db/
+data/models/
+data/sample_notes/
+
+# Deprecated paths (can be removed after transition)
 chroma_db/
 models/
+test_notes/
 
 # Distribution / packaging
 .Python
