@@ -24,6 +24,7 @@ models/
 test_notes/
 
 # Distribution / packaging
+ruff.toml
 .Python
 build/
 test_notes/
