@@ -81,36 +81,30 @@
   - [ ] Add persistent database path configuration
   - [ ] Enable switching between local LLM and API modes
 
-## Quick Start Validation Commands
+## Critical Missing Functionality
+- **❌ No embedding generation pipeline** - Tests use temporary DBs, no actual note ingestion
+- **❌ No actual ChromaDB setup** - System can't process real notes
+- **❌ test_agent.py broken** - Still references deleted agent.py
+- **❌ main.py missing collection population** - No way to populate embeddings
+
+## Updated Validation Commands
 ```bash
 # Environment setup
 export OPENROUTER_API_KEY="your-key"
 export MODEL_PATH="./models/Qwen3-Embedding-0.6B-f16.gguf"
 
-# Full system test
-python main.py
-
-# Individual component tests
-python -m unittest tests/test_retriever.py -v
-python -m unittest tests/test_agent.py::TestAgentMilestone1::test_milestone_1_workflow -v
-
-# Manual query testing
-python agent.py
+# Check what actually works
+python -m unittest tests/test_retriever.py tests/test_query_planner.py tests/test_note.py -v
+python -m unittest tests/test_agent.py  # Expected: FAIL due to broken imports
+python main.py                          # Expected: FAIL with empty/missing collection
 ```
 
 ## Success Criteria Checklist
-- [ ] All existing tests pass
-- [ ] Query planner produces valid JSON for all query types
-- [ ] Retriever correctly processes both semantic and metadata queries
-- [ ] Response formats match PRD specifications exactly
-- [ ] System handles missing collections gracefully
-- [ ] End-to-end integration tests pass with temporary databases
-- [ ] Documentation accurately reflects current usage
-- [ ] Environment setup works on fresh system
-
-## Post-MVP Features (Future)
-- Advanced query operators (regex, fuzzy matching)
-- Multi-notebook support
+- [ ] test_agent.py refactored to use main.RAGMicroAgent
+- [ ] System can generate embeddings from actual note files
+- [ ] ChromaDB populated with real note content
+- [ ] End-to-end query processing works with actual data
+- [ ] All tests pass including integration with real collection
 - Query result highlighting/excerpts
 - Graph-based relationship discovery
 - Export functionality for retrieved contexts
