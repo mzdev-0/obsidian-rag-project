@@ -46,12 +46,14 @@ class RAGMicroAgent:
             config: LLMConfig object, defaults to env configuration if not provided
         """
         self.config = config or LLMConfig.from_env()
-        
+
         # Validate configuration
         validation = validate_config(self.config)
         if not validation["can_proceed"]:
-            raise ValueError("Configuration validation failed: " + ", ".join(validation["issues"]))
-        
+            raise ValueError(
+                "Configuration validation failed: " + ", ".join(validation["issues"])
+            )
+
         if validation["warnings"]:
             for warning in validation["warnings"]:
                 logger.warning(warning)
@@ -63,7 +65,9 @@ class RAGMicroAgent:
             persist_directory=self.config.db_path,
         )
 
-        logger.info(f"Initialized RAG micro-agent with collection: {self.config.collection_name}")
+        logger.info(
+            f"Initialized RAG micro-agent with collection: {self.config.collection_name}"
+        )
 
     def query(self, user_query: str) -> Dict[str, Any]:
         """
@@ -118,7 +122,7 @@ def run_rag_query(user_query: str, db_path: str = "./chroma_db") -> Dict[str, An
     Returns:
         Context package dictionary
     """
-    agent = RAGMicroAgent(db_path=db_path)
+    agent = RAGMicroAgent(db_path=db_path)  # pyright: ignore
     return agent.query(user_query)
 
 
@@ -152,6 +156,7 @@ def main():
     try:
         # Create config from arguments via environment variables
         import os
+
         os.environ["CHROMA_DB_PATH"] = args.db_path
         os.environ["CHROMA_COLLECTION_NAME"] = args.collection
         agent = RAGMicroAgent()
