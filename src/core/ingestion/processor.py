@@ -35,7 +35,12 @@ class NoteProcessor:
 
     def process_note(self, note: Note) -> Iterator[ProcessedDocument]:
         """
-        Convert a Note into one or more ProcessedDocuments.
+        Convert a Note into one or more ProcessedDocuments using comprehensive parsing.
+
+        Uses parsing.parse_headings() to properly structure documents:
+        - Title + content before first heading as first document
+        - Each heading section as separate document
+        - Handles notes without headings (single document)
 
         Args:
             note: The Note object to process
@@ -43,27 +48,17 @@ class NoteProcessor:
         Yields:
             ProcessedDocument objects ready for embedding
         """
-        if not note.content_sections:
-            # Handle notes without headings - store as single document
-            doc = self._create_document_from_note_body(note)
-            if doc.content.strip():
-                logger.info(f"Processing note without headings: {note.file_path}")
-                yield doc
-            else:
-                logger.warning(f"Note {note.file_path} has no content to process")
+        from src.core import parsing
+        
+        sections = parsing.parse_headings(note.note_body)
+        
+        if not sections:
+            logger.warning(f"Note {note.file_path} has no parseable content")
             return
-
-        # Process each content section as a separate document
-        processed_count = 0
-        for section in note.content_sections:
+            
+        for section in sections:
             if section.content.strip():
                 yield self._create_document_from_section(note, section)
-                processed_count += 1
-
-        if processed_count == 0:
-            logger.warning(f"Note {note.file_path} has sections but all are empty")
-        else:
-            logger.info(f"Processed {processed_count} sections from {note.file_path}")
 
     def process_file(self, file_path: str) -> Iterator[ProcessedDocument]:
         """
@@ -149,13 +144,17 @@ class NoteProcessor:
 
     def _create_metadata(self, note: Note, heading: str, level: int) -> Dict:
         """Create metadata dictionary for ChromaDB storage."""
+        # Convert lists to comma-separated strings for ChromaDB compatibility
+        tags_str = ",".join(note.tag_wikilinks) if note.tag_wikilinks else ""
+        wikilinks_str = ",".join(note.wikilinks) if note.wikilinks else ""
+        
         return {
             "title": note.title,
             "file_path": str(note.file_path),
             "heading": heading,
             "level": level,
-            "tags": note.tag_wikilinks,
-            "wikilinks": note.wikilinks,
+            "tags": tags_str,
+            "wikilinks": wikilinks_str,
             "created_date": note.created_date.isoformat(),
             "modified_date": note.modified_date.isoformat(),
         }
