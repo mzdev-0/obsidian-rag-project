@@ -35,12 +35,10 @@ class NoteProcessor:
 
     def process_note(self, note: Note) -> Iterator[ProcessedDocument]:
         """
-        Convert a Note into one or more ProcessedDocuments using comprehensive parsing.
+        Convert a Note into ProcessedDocuments using pre-parsed content sections.
 
-        Uses parsing.parse_headings() to properly structure documents:
-        - Title + content before first heading as first document
-        - Each heading section as separate document
-        - Handles notes without headings (single document)
+        Uses the Note object's existing content_sections (already parsed during Note creation)
+        to avoid redundant parsing work.
 
         Args:
             note: The Note object to process
@@ -48,15 +46,11 @@ class NoteProcessor:
         Yields:
             ProcessedDocument objects ready for embedding
         """
-        from src.core import parsing
-        
-        sections = parsing.parse_headings(note.note_body)
-        
-        if not sections:
+        if not note.content_sections:
             logger.warning(f"Note {note.file_path} has no parseable content")
             return
             
-        for section in sections:
+        for section in note.content_sections:
             if section.content.strip():
                 yield self._create_document_from_section(note, section)
 
