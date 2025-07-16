@@ -175,6 +175,7 @@ def retrieve_context(query_plan: dict, vectorstore) -> dict:
                 "document": doc.page_content,
                 "metadata": doc.metadata
             })
+        logging.debug(f"Retrieved {len(processed_sections)} total sections from semantic query")
         # Apply deduplication for semantic search results
         # Skip deduplication for semantic search - keep all ranking order
 
@@ -186,11 +187,15 @@ def retrieve_context(query_plan: dict, vectorstore) -> dict:
             where=where_filter, limit=100, include=["metadatas", "documents"]
         )
         processed_sections = _normalize_get_results(results)
+        logging.debug(f"Retrieved {len(processed_sections)} total sections from metadata GET")
 
     response_format = query_plan.get("response_format", "metadata_only")
     logging.info(
         f"Packaging {len(processed_sections)} sections for '{response_format}' format."
     )
+    
+    if len(processed_sections) == 0:
+        logging.warning(f"Zero sections returned for query plan: {query_plan}")
 
     if response_format == "selective_context":
         return _package_selective_context(processed_sections)

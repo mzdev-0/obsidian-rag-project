@@ -1,10 +1,13 @@
 import os
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import List, Optional
+from typing import Optional
 from . import parsing
 
-Vector = List[float]
+logger = logging.getLogger(__name__)
+
+Vector = list[float]
 
 
 # @dataclass
@@ -30,16 +33,16 @@ class Note:
     modified_date: datetime = field(init=False)
 
     # --- Relational & Categorical Metadata ---
-    references: List[str] = field(default_factory=list)
-    wikilinks: List[str] = field(default_factory=list)
-    tag_wikilinks: List[str] = field(default_factory=list)
-    urls: List[str] = field(
+    references: list[str] = field(default_factory=list)
+    wikilinks: list[str] = field(default_factory=list)
+    tag_wikilinks: list[str] = field(default_factory=list)
+    urls: list[str] = field(
         default_factory=list
     )  # urls found in the note content (May not want to collect separately)
 
     # --- Structured Content ---
     note_body: str = field(init=False)
-    content_sections: List[parsing.ContentSection] = field(default_factory=list)
+    content_sections: list[parsing.ContentSection] = field(default_factory=list)
     #    images: List[Image] = field(default_factory=list)
 
     def __post_init__(self):
@@ -61,6 +64,15 @@ class Note:
         self.note_body = parsing.parse_body(self._raw_content)
         self.wikilinks = parsing.extract_wikilinks(self.note_body)
         self.content_sections = parsing.parse_headings(self.note_body)
+        
+        logger.debug(f"Parsed note {self.file_path}: {len(self.tag_wikilinks)} tags, {len(self.wikilinks)} wikilinks, {len(self.content_sections)} sections")
+        
+        if not self.note_body.strip():
+            logger.warning(f"Note body empty after parsing: {self.file_path}")
+            
+        for i, section in enumerate(self.content_sections):
+            logger.debug(f"Section {i+1}: '{section.heading}' ({len(section.content)} chars)")
+            
         # self.images = parsing.extract_images(self._raw_content)
 
     @classmethod
@@ -69,7 +81,12 @@ class Note:
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"Note file not found at: {file_path}")
 
-        with open(file_path, "r", encoding="utf-8") as f:
-            raw_content = f.read()
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                raw_content = f.read()
 
-        return cls(file_path=file_path, _raw_content=raw_content)
+            logger.info(f"Loaded note: {file_path} ({len(raw_content)} chars)")
+            return cls(file_path=file_path, _raw_content=raw_content)
+        except Exception as e:
+            logger.error(f"Failed to load note from {file_path}: {e}")
+            raise
