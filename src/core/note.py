@@ -59,7 +59,7 @@ class Note:
         for i, section in enumerate(self.content_sections):
             logger.debug(f"Section {i+1}: '{section.heading}' ({len(section.content)} chars)")
             
-        # self.images = parsing.extract_images(self._raw_content)
+
 
     @classmethod
     def from_file(cls, file_path: str) -> "Note":
