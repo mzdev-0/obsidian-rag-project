@@ -17,11 +17,9 @@ from typing import Dict, Any, Optional
 # Add src directory to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
-from langchain_community.vectorstores import Chroma
-
 from core.query_planner import deconstruct_query
 from core.retriever import retrieve_context
-from core.embed import llama_embedder
+from core.ingestion.vector_manager import VectorStoreManager
 from config import LLMConfig, validate_config
 
 
@@ -58,11 +56,10 @@ class RAGMicroAgent:
             for warning in validation["warnings"]:
                 logger.warning(warning)
 
-        # Initialize LangChain Chroma vectorstore
-        self.vectorstore = Chroma(
-            collection_name=self.config.collection_name,
-            embedding_function=llama_embedder,
-            persist_directory=self.config.db_path,
+        # Initialize VectorStoreManager as the single vector store interface
+        self.vector_manager = VectorStoreManager(
+            db_path=self.config.db_path,
+            collection_name=self.config.collection_name
         )
 
         logger.info(
@@ -99,13 +96,8 @@ class RAGMicroAgent:
     def get_collection_stats(self) -> Dict[str, Any]:
         """Get statistics about the current collection."""
         try:
-            # Get count via underlying collection
-            count = self.vectorstore._collection.count()
-            return {
-                "collection_name": self.config.collection_name,
-                "document_count": count,
-                "db_path": self.config.db_path,
-            }
+            stats = self.vector_manager.get_collection_stats()
+            return stats
         except Exception as e:
             logger.error(f"Error getting collection stats: {str(e)}")
             return {"error": str(e)}
