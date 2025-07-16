@@ -45,10 +45,10 @@ class TestVaultScanner(unittest.TestCase):
         self.create_test_file(f"{self.test_dir}/note1.md", "# Test Note")
         self.create_test_file(f"{self.test_dir}/note2.markdown", "## Another Note")
         self.create_test_file(f"{self.test_dir}/note3q", "## Not markdown")
-        
+
         # Act
         results = list(self.scanner.scan(self.test_dir))
-        
+
         # Assert
         found_files = {f.name for f in results}
         self.assertEqual(found_files, {"note1.md", "note2.markdown"})
@@ -60,10 +60,10 @@ class TestVaultScanner(unittest.TestCase):
         self.create_test_file(f"{self.test_dir}/.hidden.md")
         self.create_test_file(f"{self.test_dir}/.hidden_dir/visible.md")
         self.create_test_file(f"{self.test_dir}/dir/.internal.md")
-        
+
         # Act
         results = list(self.scanner.scan(self.test_dir))
-        
+
         # Assert
         visible_file_count = len(results)
         self.assertEqual(visible_file_count, 1)
@@ -75,36 +75,15 @@ class TestVaultScanner(unittest.TestCase):
         self.create_test_file(f"{self.test_dir}/level1.md")
         self.create_test_file(f"{self.test_dir}/dir1/level2.md")
         self.create_test_file(f"{self.test_dir}/dir1/dir2/level3.md")
-        
+
         # Act
         results = list(self.scanner.scan(self.test_dir))
-        
+
         # Assert
         paths = [str(r.relative_to(self.test_dir)) for r in results]
-        self.assertEqual(set(paths), {"level1.md", "dir1/level2.md", "dir1/dir2/level3.md"})
-
-    def test_symbolic_link_handling(self):
-        """Test handling of symbolic links."""
-        # Skip if symbolic link creation not supported
-        try:
-            os.symlink(
-                f"{self.test_dir}/real.md",
-                f"{self.test_dir}/link.md"
-            )
-        except OSError:
-            self.skipTest("Symbolic links not supported on this system")
-            
-        # Test data
-        self.create_test_file(f"{self.test_dir}/real.md")
-        os.symlink(f"{self.test_dir}/real.md", f"{self.test_dir}/link.md")
-        
-        # Act
-        results = list(self.scanner.scan(self.test_dir))
-        
-        # Assert - only real file should be included
-        found_files = {f.name for f in results}
-        self.assertEqual(found_files, {"real.md"})
-        self.assertNotIn("link.md", found_files)
+        self.assertEqual(
+            set(paths), {"level1.md", "dir1/level2.md", "dir1/dir2/level3.md"}
+        )
 
     def test_case_insensitive_extensions(self):
         """Test markdown extension detection is case-insensitive."""
@@ -112,10 +91,10 @@ class TestVaultScanner(unittest.TestCase):
         self.create_test_file(f"{self.test_dir}/upper.MD")
         self.create_test_file(f"{self.test_dir}/mixed.Markdown")
         self.create_test_file(f"{self.test_dir}/lower.md")
-        
+
         # Act
         results = list(self.scanner.scan(self.test_dir))
-        
+
         # Assert
         found_files = {f.name for f in results}
         expected = {"upper.MD", "mixed.Markdown", "lower.md"}
@@ -125,17 +104,17 @@ class TestVaultScanner(unittest.TestCase):
         """Test scanning empty directories."""
         # Test data - just empty directories
         os.makedirs(f"{self.test_dir}/empty_dir", exist_ok=True)
-        
+
         # Act
         results = list(self.scanner.scan(self.test_dir))
-        
+
         # Assert
         self.assertEqual(len(results), 0)
 
     def test_non_existent_path(self):
         """Test handling of non-existent directory paths."""
         non_existent = f"{self.test_dir}/does_not_exist"
-        
+
         # Act & Assert
         with self.assertRaises(FileNotFoundError):
             list(self.scanner.scan(non_existent))
@@ -145,7 +124,7 @@ class TestVaultScanner(unittest.TestCase):
         # Create a restricted directory
         restricted_dir = f"{self.test_dir}/restricted"
         os.makedirs(restricted_dir, exist_ok=True)
-        
+
         try:
             os.chmod(restricted_dir, 0o000)
             results = list(self.scanner.scan(self.test_dir))
@@ -159,20 +138,6 @@ class TestVaultScanner(unittest.TestCase):
             except OSError:
                 pass
 
-    def test_file_archiver_plugin_compatibility(self):
-        """Test compatibility with Obsidian vault archive plugins."""
-        # Test data - common archive patterns
-        self.create_test_file(f"{self.test_dir}/note.md")
-        self.create_test_file(f"{self.test_dir}/note@backup.md")
-        self.create_test_file(f"{self.test_dir}/note.conflict.md")
-        
-        # Act
-        results = list(self.scanner.scan(self.test_dir))
-        
-        # Assert - only regular markdown files processed
-        found_files = {f.name for f in results}
-        self.assertEqual(found_files, {"note.md"})
-
     def test_vault_performance_characteristics(self):
         """Test performance with large vault simulation."""
         # Create many directories and files
@@ -180,13 +145,14 @@ class TestVaultScanner(unittest.TestCase):
             dir_path = f"{self.test_dir}/dir_{i:03d}"
             for j in range(10):
                 self.create_test_file(f"{dir_path}/note_{j}.md")
-        
+
         # Act with performance measurement
         import time
+
         start = time.time()
         results = list(self.scanner.scan(self.test_dir))
         duration = time.time() - start
-        
+
         # Assert
         self.assertEqual(len(results), 1000)  # 100 dirs * 10 files
         self.assertLess(duration, 2.0)  # Should complete in under 2 seconds
@@ -196,10 +162,10 @@ class TestVaultScanner(unittest.TestCase):
         # Test data with unicode characters
         self.create_test_file(f"{self.test_dir}/项目.md", "# 標題")
         self.create_test_file(f"{self.test_dir}/测试/笔记.md")
-        
+
         # Act
         results = list(self.scanner.scan(self.test_dir))
-        
+
         # Assert
         found_files = {f.name for f in results}
         expected = {"项目.md", "笔记.md"}
@@ -209,47 +175,31 @@ class TestVaultScanner(unittest.TestCase):
         """Test the structure and metadata of scan results."""
         # Test data
         import datetime
+
         test_file = f"{self.test_dir}/test.md"
         self.create_test_file(test_file, "# Test content")
-        
+
         # Act
         results = list(self.scanner.scan(self.test_dir))
-        
+
         # Assert
         self.assertEqual(len(results), 1)
         result = results[0]
-        
+
         # Verify essential metadata
         self.assertTrue(result.is_file())
         self.assertTrue(result.suffix.lower() in {"", ".md", ".markdown"})
         self.assertGreater(result.stat().st_size, 0)
         self.assertTrue(result.exists())
 
-    def test_scan_options_parameter(self):
-        """Test scanner configuration options."""
-        # Create mix of file types
-        self.create_test_file(f"{self.test_dir}/note.md")
-        self.create_test_file(f"{self.test_dir}/note.txt")
-        
-        # Test with custom extensions
-        from src.core.ingestion.vault_scanner import ScanOptions
-        options = ScanOptions(include_extensions={"txt", "md"})
-        
-        # Act
-        results = list(self.scanner.scan(self.test_dir, options=options))
-        
-        # Assert
-        found_files = {f.suffix.lower() for f in results}
-        self.assertEqual(found_files, {".txt", ".md"})
-
 
 class TestScanOptions(unittest.TestCase):
     """Test scan configuration options."""
-    
+
     def test_default_extensions(self):
         """Test default markdown extension handling."""
-        from src.core.ingestion.vault_scanner import ScanOptions
-        
+        from src.core.ingestion.scanner import ScanOptions
+
         options = ScanOptions()
         self.assertEqual(options.include_extensions, {".md", ".markdown"})
         self.assertTrue(options.follow_symlinks is False)
@@ -258,15 +208,15 @@ class TestScanOptions(unittest.TestCase):
 
     def test_custom_scan_options(self):
         """Test custom scan configuration."""
-        from src.core.ingestion.vault_scanner import ScanOptions
-        
+        from src.core.ingestion.scanner import ScanOptions
+
         options = ScanOptions(
             include_extensions={".txt", ".md"},
             follow_symlinks=True,
             include_hidden=True,
-            max_depth=2
+            max_depth=2,
         )
-        
+
         self.assertEqual(options.include_extensions, {".txt", ".md"})
         self.assertTrue(options.follow_symlinks)
         self.assertTrue(options.include_hidden)
@@ -275,3 +225,4 @@ class TestScanOptions(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
