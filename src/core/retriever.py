@@ -143,7 +143,7 @@ def _package_selective_context(sections: list) -> dict:
 # --- Main Orchestrator ---
 
 
-def retrieve_context(query_plan: dict, vectorstore) -> dict:
+def retrieve_context(query_plan: dict, vector_manager) -> dict:
     """
     Orchestrates retrieval and packaging based on the query plan,
     choosing between a semantic 'query' and a metadata 'get'.
@@ -161,11 +161,11 @@ def retrieve_context(query_plan: dict, vectorstore) -> dict:
         logging.info(
             f"Performing semantic QUERY with text: '{query_plan['semantic_query'][:50]}...'"
         )
-        # Use LangChain's vectorstore which has proper embedding configuration
-        docs = vectorstore.similarity_search(
+        # Use VectorStoreManager for semantic search
+        docs = vector_manager.search_documents(
             query=query_plan["semantic_query"], 
             k=20, 
-            filter=where_filter
+            filter_dict=where_filter
         )
         # Convert LangChain documents to our internal format
         processed_sections = []
@@ -181,12 +181,19 @@ def retrieve_context(query_plan: dict, vectorstore) -> dict:
 
     else:
         logging.info("Performing metadata GET operation.")
-        # For metadata-only queries, use the underlying Chroma collection
-        collection = vectorstore._collection
-        results = collection.get(
-            where=where_filter, limit=100, include=["metadatas", "documents"]
+        # For metadata-only queries, use VectorStoreManager's metadata search
+        docs = vector_manager.get_documents_by_metadata(
+            filter_dict=where_filter,
+            limit=100
         )
-        processed_sections = _normalize_get_results(results)
+        # Convert LangChain documents to our internal format
+        processed_sections = []
+        for doc_idx, doc in enumerate(docs):
+            processed_sections.append({
+                "id": doc.metadata.get("id", str(doc_idx)),
+                "document": doc.page_content,
+                "metadata": doc.metadata
+            })
         logging.debug(f"Retrieved {len(processed_sections)} total sections from metadata GET")
 
     response_format = query_plan.get("response_format", "metadata_only")

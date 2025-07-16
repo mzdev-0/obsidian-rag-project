@@ -84,7 +84,7 @@ class RAGMicroAgent:
             logger.info(f"Generated query plan: {json.dumps(query_plan, indent=2)}")
 
             # Step 2: Execute retrieval using retriever interface
-            context_package = retrieve_context(query_plan, self.vectorstore)
+            context_package = retrieve_context(query_plan, self.vector_manager)
             logger.info(f"Retrieved {len(context_package.get('results', []))} results")
 
             return context_package
