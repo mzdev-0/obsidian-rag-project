@@ -2,7 +2,7 @@
 Integration tests for the complete note ingestion pipeline.
 
 These tests validate the end-to-end workflow from markdown files to
-embedded documents in ChromaDB, based on the existing architecture.
+embedded documents in ChromaDB, using the new RAGMicroAgent architecture.
 """
 
 import unittest
@@ -11,6 +11,12 @@ import shutil
 import os
 from pathlib import Path
 from datetime import datetime
+
+# Add project root to path for imports
+import sys
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
+
+from main import RAGMicroAgent
 
 
 class TestFullIngestionPipeline(unittest.TestCase):
@@ -51,22 +57,14 @@ The architecture consists of...""",
             with open(file_path, "w", encoding="utf-8") as f:
                 f.write(content)
         
-        # Test pipeline execution (mock components)
-        processed_notes = 0
-        total_sections = 0
+        # Test actual pipeline with RAGMicroAgent
+        agent = RAGMicroAgent()
+        result = agent.index_vault(str(self.vault_path))
         
-        for note_file in self.vault_path.glob("*.md"):
-            processed_notes += 1
-            # Simulate processing with existing architecture
-            with open(note_file, "r", encoding="utf-8") as f:
-                content = f.read()
-            
-            # Pretend to parse into sections (Note.from_file logic)
-            sections = content.split('\n#')
-            total_sections += max(1, len(sections))
-        
-        self.assertEqual(processed_notes, 2)
-        self.assertGreater(total_sections, 2)
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(result["files_found"], 2)
+        self.assertEqual(result["files_processed"], 2)
+        self.assertGreater(result["documents_added"], 0)
 
     def test_sample_vault_processes_correctly(self):
         """Test processing with actual sample notes if available."""
@@ -261,14 +259,18 @@ class TestCLIIntegration(unittest.TestCase):
             with open(file_path, "w", encoding="utf-8") as f:
                 f.write(content)
         
-        # Simulate processing: count actual files
-        all_files = []
-        for root, dirs, files in os.walk(vault_path):
-            for file in files:
-                if file.endswith('.md') and not file.startswith('.'):
-                    all_files.append(os.path.join(root, file))
+        # Test actual processing with RAGMicroAgent
+        agent = RAGMicroAgent()
+        result = agent.index_vault(str(vault_path))
         
-        self.assertEqual(len(all_files), 3)
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(result["files_found"], 3)
+        self.assertEqual(result["files_processed"], 3)
+        self.assertGreater(result["documents_added"], 0)
+        
+        # Verify collection stats
+        stats = agent.get_collection_stats()
+        self.assertGreater(stats["document_count"], 0)
 
 
 if __name__ == "__main__":

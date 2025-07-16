@@ -102,6 +102,87 @@ class RAGMicroAgent:
             logger.error(f"Error getting collection stats: {str(e)}")
             return {"error": str(e)}
 
+    def index_vault(self, vault_path: str, reset: bool = False) -> Dict[str, Any]:
+        """
+        Index all markdown files in a vault directory.
+        
+        Args:
+            vault_path: Path to the vault directory
+            reset: Whether to clear existing collection before indexing
+            
+        Returns:
+            Dictionary with indexing results
+        """
+        from core.ingestion.scanner import VaultScanner, ScanOptions
+        from core.ingestion.processor import NoteProcessor
+        from pathlib import Path
+        import time
+
+        start_time = time.time()
+        
+        try:
+            # Initialize components
+            scanner = VaultScanner(ScanOptions())
+            processor = NoteProcessor()
+            
+            # Clear collection if reset requested
+            if reset:
+                self.vector_manager.clear_collection()
+                logger.info("Cleared existing collection")
+            
+            # Scan for markdown files
+            logger.info(f"Scanning vault: {vault_path}")
+            files = list(scanner.scan(vault_path))
+            
+            if not files:
+                return {
+                    "status": "completed",
+                    "files_found": 0,
+                    "files_processed": 0,
+                    "documents_added": 0,
+                    "errors": [],
+                    "elapsed_time": time.time() - start_time
+                }
+            
+            # Process files and add to vector store
+            documents = []
+            errors = []
+            
+            for file_path in files:
+                try:
+                    file_docs = list(processor.process_file(str(file_path)))
+                    documents.extend(file_docs)
+                    logger.debug(f"Processed {file_path}: {len(file_docs)} documents")
+                except Exception as e:
+                    error_msg = f"Failed to process {file_path}: {str(e)}"
+                    logger.error(error_msg)
+                    errors.append(error_msg)
+            
+            # Add documents to vector store
+            if documents:
+                self.vector_manager.add_documents(documents)
+                logger.info(f"Added {len(documents)} documents to vector store")
+            
+            return {
+                "status": "completed",
+                "files_found": len(files),
+                "files_processed": len(files) - len(errors),
+                "documents_added": len(documents),
+                "errors": errors,
+                "elapsed_time": time.time() - start_time
+            }
+            
+        except Exception as e:
+            logger.error(f"Indexing failed: {str(e)}")
+            return {
+                "status": "failed",
+                "files_found": 0,
+                "files_processed": 0,
+                "documents_added": 0,
+                "errors": [str(e)],
+                "elapsed_time": time.time() - start_time
+            }
+
 
 def run_rag_query(user_query: str, db_path: str = "./data/chroma_db") -> Dict[str, Any]:
     """
