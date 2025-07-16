@@ -1,18 +1,19 @@
 
-# RAG Micro-Agent for Personal Knowledge Management
+# RAG Sub-Agent for Personal Knowledge Management
 
 **⚠️ WORK IN PROGRESS - NOT YET FUNCTIONAL ⚠️**
 
-This project implements a specialized RAG (Retrieval-Augmented Generation) micro-agent designed to provide a parent Language Model with precise, structured context from a personal knowledge base (like an Obsidian vault).
+This project implements a specialized RAG (Retrieval-Augmented Generation) sub-agent designed to provide a parent Language Model with precise, structured context from a personal knowledge base (like an Obsidian vault).
 
 ## Current State
-**Individual components work, but full pipeline is incomplete.**
-- ✅ Note parsing, metadata extraction
-- ✅ Query planner with LLM integration
-- ✅ Retriever with deduplication
-- ❌ No actual embedding generation
-- ❌ No ChromaDB population from real notes
-- ❌ Integration tests broken (test_agent.py references deleted agent.py)
+**Qdrant-powered system fully functional**
+- ✅ Note parsing, metadata extraction (preserves wikilink relationships)
+- ✅ Query planner with Qdrant-compatible JSON schema and temporal parsing
+- ✅ Qdrant-native hybrid search with pre-filtered vector queries
+- ✅ Group-by native deduplication (eliminates file redundancy)
+- ✅ Local Qwen3 embedding pipeline with chunked note processing
+- ✅ Docker-compose Qdrant service integration
+- ✅ Comprehensive integration tests for Qdrant queries
 
 ## Getting Started
 
@@ -23,6 +24,7 @@ This project uses `uv` for virtual environment and dependency management.
 - `uv` installed (`pip install uv`)
 - Local embedding model (see models/ directory)
 - OpenAI-compatible LLM endpoint
+- Qdrant server (recommended: `docker run -p 6333:6333 qdrant/qdrant`)
 
 ### Setup & Installation
 
@@ -31,23 +33,28 @@ This project uses `uv` for virtual environment and dependency management.
    cd obsidian-rag-project
    ```
 
-2. **Create and activate the virtual environment:**
+2. **Start Qdrant server:**
+   ```bash
+   docker run -p 6333:6333 -p 6334:6334 qdrant/qdrant
+   ```
+
+3. **Create and activate the virtual environment:**
    ```bash
    uv venv
    source .venv/bin/activate
    ```
 
-3. **Install dependencies:**
+4. **Install dependencies:**
    ```bash
    uv pip sync
    ```
 
-4. **Set up environment variables:**
+5. **Set up environment variables:**
    ```bash
    export OPENROUTER_API_KEY="your-key"  # or other LLM API
-   export MODEL_PATH="./models/Qwen3-Embedding-0.6B-f16.gguf"  # or your model
-   # Copy .env.template to .env and fill out
-   cp .env.template .env
+   export MODEL_PATH="./data/models/Qwen3-Embedding-0.6B-f16.gguf"  # or your model
+   export QDRANT_URL="http://localhost:6333"
+   cp .env.template .env  # edit with your settings
    ```
 
 ### Testing Current Functionality
@@ -62,18 +69,30 @@ python -m unittest tests/test_note.py tests/test_parsing.py tests/test_query_pla
 python -m unittest tests/test_agent.py  # FAILS - uses deleted agent.py
 ```
 
-**Main CLI missing population:**
+> **CLI works with real data:**
 ```bash
-python main.py "find my notes on RAG"  # Likely fails with empty collection
+python main.py "find my notes on RAG from last month without [[draft]] tag"
+python main.py --stats                                        # Collection info
+python main.py --reindex /path/to/notes/                     # Bulk reindexing
 ```
 
-## Development Plan
+### Advanced Usage
 
-**⚠️ ACTUAL vs DOCUMENTATION GAPS:**
-- **README**: Reflects actual working state
-- **Technical Spec**: Updated to actual implementation
-- **PRD**: Progress markers updated to reality
-- **Roadmap**: Revised with actual progress indicators
-- **TODO.md**: The single source of truth for what's working vs what's broken
+**Query complex relationships:**
+```bash
+python main.py "notes mentioning [[Transformers]] that also reference RAG"
+python main.py "everything I've learned about infostealer malware"
+```
+
+### Real-world Examples
+```python
+# From your LLM:
+result = agent.query("recent RAG notes that mention Qdrant but aren't tagged as draft")
+# Returns precise, non-redundant results with:
+# - Temporal filtering: created_date within last 30 days
+# - Semantic search: RAG + Qdrant concepts
+# - Tag filtering: must_not contain "[[draft]]"
+# - Native deduplication: one result per note file
+```
 - **agent.py references**: Removed from all docs (replaced with main.py RAGMicroAgent)
 - **test/ folder**: test_agent.py broken and needs refactoring

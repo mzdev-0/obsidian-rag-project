@@ -1,27 +1,35 @@
-## RAG Micro-Agent: Technical Specification v1
+## RAG Sub-Agent: Technical Specification v2 - Qdrant Edition
 
-This document outlines the technical implementation details for the RAG micro-agent, based on the v2 PRD.
+This document outlines the technical implementation details for the Qdrant-powered RAG sub-agent, updated from the v2 PRD.
 
 ### 1. `query_planner.py`
 
-This module is responsible for converting a natural language query into a structured, machine-readable plan using OpenAI-compatible LLM endpoints.
+This module is responsible for converting natural language queries into structured Qdrant-compatible plans using OpenAI-compatible LLM endpoints. Now supports complex temporal and relational filtering via Qdrant's native filter syntax.
 
 #### **Functions:**
 
 `deconstruct_query(user_query: str, model: str = "qwen3:8b", max_retries: int = 3) -> dict:`
--   **Purpose**: To generate the JSON query plan.
+-   **Purpose**: To generate Qdrant-compatible JSON query plan with native temporal and relational filtering.
 -   **Parameters**:
     -   `user_query`: The raw string input from the user.
     -   `model`: LLM model identifier (must be JSON schema-aware).
     -   `max_retries`: Number of retry attempts on JSON parsing failure.
 -   **Logic**:
-    1.  Load the prompt template with today's date.
-    2.  Add user query to prompt.
-    3.  Send to LLM endpoint (configurable via OPENROUTER_API_KEY).
-    4.  Receive response using JSON Schema validation.
-    5.  Fallback to manual JSON parsing if schema validation fails.
-    6.  Return fallback plan if all attempts fail.
--   **Returns**: Python dictionary matching the query plan structure with `semantic_search_needed`, `semantic_query`, `filters`, and `response_format` keys.
+    1.  Load prompt template with current date for temporal understanding.
+    2.  Parse temporal expressions ("last week", "this month") into Unix timestamp ranges.
+    3.  Generate Qdrant filter structure with `must`, `should`, and `range` conditions.
+    4.  Support complex filtering for AND/OR conditions on tags, wikilinks, temporal ranges.
+    5.  Return fallback plan if parsing fails.
+-   **Returns**: Python dictionary with Qdrant filter structure, search parameters, and response format:
+    ```json
+    {
+        "semantic_search_needed": bool,
+        "semantic_query": string, 
+        "qdrant_filter": dict,
+        "response_format": "metadata_only" | "selective_context",
+        "search_params": {"k": int, "score_threshold": float, "group_by": str}
+    }
+    ```
 
 #### **Key Properties:**
 - Uses JSON schema validation for reliable parsing
@@ -31,30 +39,30 @@ This module is responsible for converting a natural language query into a struct
 
 ### 2. `retriever.py`
 
-This module executes the plan from the Query Planner using LangChain's Chroma vectorstore.
+This module executes Qdrant hybrid queries using native client operations, eliminating the previous two-step process.
 
 #### **Functions:**
 
-`retrieve_context(query_plan: dict, vectorstore) -> dict:`
--   **Purpose**: Orchestrate retrieval and packaging based on the query plan, choosing between semantic `query` and metadata `get`.
+`retrieve_context(query_plan: dict, qdrant_client, collection_name: str) -> dict:`
+-   **Purpose**: Execute single atomic Qdrant query combining semantic search, complex filtering, and native deduplication.
 -   **Parameters**:
-    -   `query_plan`: The Python dictionary output from `deconstruct_query`.
-    -   `vectorstore`: LangChain Chroma vectorstore instance.
+    -   `query_plan`: Qdrant-compatible plan from `deconstruct_query`.
+    -   `qdrant_client`: Native Qdrant client instance.
+    -   `collection_name`: Target Qdrant collection name.
 -   **Logic**:
-    1.  Build `where` filter from `query_plan['filters']`.
-    2.  If `semantic_search_needed: true`: Use `vectorstore.similarity_search()` with semantic query.
-    3.  If `semantic_search_needed: false`: Use underlying Chroma collection's `get()` with metadata filtering.
-    4.  Normalize results to consistent format.
-    5.  Apply file-based deduplication (keep highest-ranked from each note).
-    6.  Package results based on `response_format`.
--   **Returns**: The final context package as a dictionary.
+    1.  Build Qdrant `Filter` object from `query_plan["qdrant_filter"]`.
+    2.  Execute hybrid search with pre-filtered semantic matching.
+    3.  Use native `group_by: "file_path"` for per-file deduplication.
+    4.  Handle temporal range queries with integer timestamp filters.
+    5.  Return results directly from Qdrant without post-processing.
+-   **Returns**: Structured context package with deduplicated section results.
 
 #### **Helper Functions:**
-- `_build_where_filter()`: Builds ChromaDB-compatible where clauses
-- `_normalize_get_results()`: Normalizes flat chromadb results to object format
-- `_deduplicate_query_sections()`: Deduplicates by file_path (was `_deduplicate_results`)
-- `_package_metadata_only()`: Creates metadata-only response
-- `_package_selective_context()`: Creates content response
+- `_build_qdrant_filter()`: Constructs Qdrant Filter objects with must/should/range conditions
+- `_execute_hybrid_search()`: Performs single Qdrant query combining vector search + payload filters
+- `_handle_group_by_results()`: Processes Qdrant grouped search results
+- `_package_metadata_only()`: Creates metadata-only response from Qdrant results
+- `_package_selective_context()`: Creates content response with section content
 
 ### 3. `main.py` (The Actual Entry Point)
 
@@ -67,8 +75,7 @@ agent = RAGMicroAgent()
 result = agent.query("find my notes about RAG")
 ```
 
-`run_rag_query(user_query: str, db_path: str = "./chroma_db") -> dict:`:
-- Convenience function equivalent to above
-- Uses configuration from `config.py`
+`run_rag_query(user_query: str, collection_name: str = "obsidian_notes") -> dict:`:
+- Uses Qdrant configuration from `config.py`
 - Returns structured context package for LLM consumption
-- Handles missing collections gracefully
+- Returns empty results for missing collections with appropriate feedback

@@ -1,23 +1,23 @@
-# Second Brain RAG Micro-Agent - Product Requirements Document v2
+# Second Brain RAG Sub-Agent - Product Requirements Document v2
 
 ## 1. Project Overview
 
 ### Vision
-To build a highly specialized RAG "micro-agent" that provides a parent Language Model with the precise context it needs to reason about a user's personal knowledge base. The agent's primary function is to intelligently retrieve and package notes, sections, and metadata, serving as a trusted "context provider" rather than a standalone chat application.
+To build a highly specialized RAG "sub-agent" that provides a parent Language Model with the precise context it needs to reason about a user's personal knowledge base. The agent's primary function is to intelligently retrieve and package notes, sections, and metadata, serving as a trusted "context provider" rather than a standalone chat application.
 
 ### Problem Statement
-Parent LLMs lack direct, structured access to a user's personal notes. Existing solutions either fail to provide context or dump large, irrelevant text blobs, which contaminates the context window and leads to poor responses. A specialized tool is needed to bridge this gap. This micro-agent will solve:
+Parent LLMs lack direct, structured access to a user's personal notes. Existing solutions either fail to provide context or dump large, irrelevant text blobs, which contaminates the context window and leads to poor responses. A specialized tool is needed to bridge this gap. This sub-agent will solve:
 - **No contextual retrieval**: Chatbots get content snippets without knowing the source note, its structure, or its relationships.
 - **Poor filtering**: Natural language queries like "notes from last week" are not translated into precise metadata filters.
 - **Context redundancy**: Retrieving both a child section and its parent (e.g., an H4 and the containing H2) wastes tokens and adds noise.
 - **Loss of structure**: Notes are treated as semantic blobs, losing the rich context of headings, wikilinks, and file structure.
 
 ### Solution Approach
-A micro-agent built on a multi-stage, planner-led retrieval architecture. The agent intelligently deconstructs a user's query, performs a precise hybrid search, eliminates redundant information, and strategically packages the context for the parent LLM, providing either high-level metadata or selective content as needed.
+A sub-agent built on a multi-stage, planner-led retrieval architecture. The sub-agent intelligently deconstructs a user's query, performs a precise hybrid search, eliminates redundant information, and strategically packages the context for the parent LLM, providing either high-level metadata or selective content as needed.
 
 ## 2. Core Architecture: The Query Planner Model
 
-The core of this system is an LLM-powered **Query Planner**. It acts as the "brain" of the micro-agent, translating ambiguous natural language into a precise, machine-executable plan.
+The core of this system is an LLM-powered **Query Planner**. It acts as the "brain" of the sub-agent, translating ambiguous natural language into a precise, machine-executable plan.
 
 ```mermaid
 graph TD
@@ -59,11 +59,11 @@ graph TD
 
 ### Tech Stack
 -   **Language**: Python
--   **Vector Database**: ChromaDB with LangChain integration
+-   **Vector Database**: Qdrant with native client and LangChain integration
 -   **LLM Framework**: JSON schema validation with OpenAI-compatible endpoints
 -   **Embedding Model**: LLAMA3-GGUF local models (`models/ directory`)
 -   **Query Planner LLM**: Configurable via OPENROUTER_API_KEY or local endpoint
--   **Config Management**: `config.py` for unified configuration
+-   **Config Management**: `config.py` for unified configuration with Qdrant connection parameters
 
 ### Data Structures
 The system's data representation is designed to capture the rich structure of markdown notes, based on `note.py` and `parsing.py`.
@@ -91,17 +91,24 @@ class Note:
     content_sections: List[ContentSection] # The note's body, chunked by heading
 ```
 
-### Stored Metadata in ChromaDB  
-Each `ContentSection` is stored in ChromaDB with the following filterable metadata, based on actual implementation:
--   `title`: The title of the note.
--   `file_path`: The original file path.
--   `created_date`: Note creation date (ISO string).
--   `modified_date`: Note modification date (ISO string).
--   `tags`: List of wikilinks from the `Tags` section.
--   `wikilinks`: List of wikilinks not in `Tags` section.
--   `heading`: The heading of the specific section.
--   `level`: The heading level (1-6).
--   **Note:** Currently no production ChromaDB exists - this is the target schema.
+### Stored Payload in Qdrant
+Each `ContentSection` is stored in Qdrant as a point with the following payload schema, optimized for advanced filtering:
+-   `title: str` - Keyword index for exact title matching
+-   `file_path: str` - Keyword index for file-based queries
+-   `created_date: int` - Integer index for temporal queries (Unix timestamp)
+-   `modified_date: int` - Integer index for last modified queries
+-   `tags: [str]` - Keyword array index for multi-tag filtering
+-   `wikilinks: [str]` - Keyword array index for relationship queries
+-   `heading: str` - Text field for heading-level filtering
+-   `level: int` - Integer index for section level queries (1-6)
+-   `section_id: str` - Unique identifier for the content section
+
+### Indexing Strategy
+Qdrant payload indexes configured on:
+- `file_path` - for file-specific retrieval
+- `created_date` and `modified_date` - for temporal range queries
+- `tags` and `wikilinks` - for relationship-based filtering
+- `level` - for precision depth control
 
 ## 4. Response Formats
 
