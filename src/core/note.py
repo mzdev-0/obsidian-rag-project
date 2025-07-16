@@ -2,22 +2,9 @@ import os
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional
 from . import parsing
 
 logger = logging.getLogger(__name__)
-
-Vector = list[float]
-
-
-# @dataclass
-# class Image:
-#    """Represents an image within a note."""
-#
-#    path: str
-#    ocr_text: Optional[str] = None
-#    context: Optional[str] = None
-#    embedding: Optional[Vector] = None
 
 
 @dataclass
@@ -43,7 +30,6 @@ class Note:
     # --- Structured Content ---
     note_body: str = field(init=False)
     content_sections: list[parsing.ContentSection] = field(default_factory=list)
-    #    images: List[Image] = field(default_factory=list)
 
     def __post_init__(self):
         """Initializes metadata and parses content."""
