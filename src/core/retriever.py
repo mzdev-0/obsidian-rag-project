@@ -1,5 +1,6 @@
 import logging
 from typing import List, Dict, Any
+from collections import defaultdict
 
 # --- Configuration ---
 logging.basicConfig(
@@ -82,7 +83,7 @@ def _deduplicate_query_sections(sections: list) -> list:
     the highest-ranked section for any given source file.
     Deduplication should preserve the highest relevance score, not just the first occurrence.
     """
-    from collections import defaultdict
+
     
     file_mapping = defaultdict(list)
     
@@ -93,7 +94,7 @@ def _deduplicate_query_sections(sections: list) -> list:
         if file_path:
             file_mapping[file_path].append(section)
     
-    # Select the first member from each file (was already correctly ordered by relevance)
+
     deduplicated = [sections[0] for sections in file_mapping.values()]
     
     return deduplicated
@@ -176,8 +177,7 @@ def retrieve_context(query_plan: dict, vector_manager) -> dict:
                 "metadata": doc.metadata
             })
         logging.debug(f"Retrieved {len(processed_sections)} total sections from semantic query")
-        # Apply deduplication for semantic search results
-        # Skip deduplication for semantic search - keep all ranking order
+
 
     else:
         logging.info("Performing metadata GET operation.")
