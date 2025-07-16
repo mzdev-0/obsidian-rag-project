@@ -15,7 +15,7 @@ import tempfile
 from pathlib import Path
 
 from src.core.note import Note
-from src.core.ingestion.processor import NoteProcessor, ProcessedDocument
+from src.core.ingestion.processor import NoteProcessor
 from config import get_embedding_function
 
 
@@ -44,18 +44,30 @@ class TestEmbeddingGeneration(unittest.TestCase):
         if self.embedder:
             test_content = documents[0].content
             embeddings = self.embedder.embed_documents([test_content])
-            
+
             # Verify embedding structure
             self.assertIsInstance(embeddings, list, "Embedder should return a list")
-            self.assertIsInstance(embeddings[0], list, "First element should be embedding vector")
-            self.assertGreater(len(embeddings[0]), 100, "Embedding should have reasonable dimension")
-            
+            self.assertIsInstance(
+                embeddings[0], list, "First element should be embedding vector"
+            )
+            self.assertGreater(
+                len(embeddings[0]), 100, "Embedding should have reasonable dimension"
+            )
+
             # Test embedding assignment to document
             doc = documents[0]
             doc.embedding = embeddings[0]
-            self.assertIsNotNone(doc.embedding, "Document should have embedding assigned")
-            self.assertIsInstance(doc.embedding, list, "Document embedding should be a list")
-            self.assertGreater(len(doc.embedding), 100, "Document embedding should have reasonable dimension")
+            self.assertIsNotNone(
+                doc.embedding, "Document should have embedding assigned"
+            )
+            self.assertIsInstance(
+                doc.embedding, list, "Document embedding should be a list"
+            )
+            self.assertGreater(
+                len(doc.embedding),
+                100,
+                "Document embedding should have reasonable dimension",
+            )
 
     def test_content_section_format(self):
         """Test embedding text format using new processor structure."""
@@ -79,18 +91,28 @@ class TestEmbeddingGeneration(unittest.TestCase):
 
         # Verify complete document structure
         doc = documents[0]
-        self.assertIsInstance(doc, ProcessedDocument)
         self.assertIsInstance(doc.id, str)
         self.assertGreater(len(doc.id), 0, "Document should have non-empty ID")
         self.assertIsInstance(doc.content, str)
         self.assertGreater(len(doc.content), 0, "Document should have content")
         self.assertIsInstance(doc.metadata, dict)
-        
+
         # Verify required metadata fields
-        required_fields = ["title", "file_path", "heading", "level", "tags", "wikilinks", "created_date", "modified_date"]
+        required_fields = [
+            "title",
+            "file_path",
+            "heading",
+            "level",
+            "tags",
+            "wikilinks",
+            "created_date",
+            "modified_date",
+        ]
         for field in required_fields:
-            self.assertIn(field, doc.metadata, f"Document metadata should contain '{field}'")
-        
+            self.assertIn(
+                field, doc.metadata, f"Document metadata should contain '{field}'"
+            )
+
         # Verify embedding field exists and is initially None
         self.assertIsNone(doc.embedding, "Document embedding should initially be None")
 
@@ -106,18 +128,23 @@ class TestEmbeddingGeneration(unittest.TestCase):
 
         # Verify document structure and content integrity
         for doc in documents:
-            self.assertIsInstance(doc, ProcessedDocument)
             self.assertIsInstance(doc.id, str)
             # Verify ID format - contains filename and numeric section index
             self.assertTrue("::" in doc.id, "Document ID should contain '::' separator")
             parts = doc.id.split("::")
             self.assertEqual(len(parts), 2, "Document ID should have exactly two parts")
-            self.assertTrue(parts[1].isdigit(), "Second part should be numeric section index")
+            self.assertTrue(
+                parts[1].isdigit(), "Second part should be numeric section index"
+            )
             self.assertIsInstance(doc.content, str)
-            self.assertGreater(len(doc.content), 0, "Document should have non-empty content")
-            self.assertIn(note.title, doc.content, "Document content should contain note title")
+            self.assertGreater(
+                len(doc.content), 0, "Document should have non-empty content"
+            )
+            self.assertIn(
+                note.title, doc.content, "Document content should contain note title"
+            )
             self.assertIsInstance(doc.metadata, dict)
-            
+
             # Verify metadata content
             self.assertEqual(doc.metadata["title"], note.title)
             self.assertEqual(doc.metadata["file_path"], str(note.file_path))
@@ -125,7 +152,7 @@ class TestEmbeddingGeneration(unittest.TestCase):
             self.assertIsInstance(doc.metadata["wikilinks"], list)
             self.assertIsInstance(doc.metadata["created_date"], str)
             self.assertIsInstance(doc.metadata["modified_date"], str)
-            
+
             # Verify embedding field is initially None
             self.assertIsNone(doc.embedding)
 
@@ -150,12 +177,11 @@ class TestNoteToDocumentConversion(unittest.TestCase):
 
         # Verify complete document structure and workflow
         for doc in documents:
-            self.assertIsInstance(doc, ProcessedDocument)
             self.assertIsInstance(doc.id, str)
             self.assertIsInstance(doc.content, str)
             self.assertGreater(len(doc.content), 0)
             self.assertIsInstance(doc.metadata, dict)
-            
+
             # Verify all required metadata fields exist and have correct types
             metadata = doc.metadata
             self.assertIsInstance(metadata["title"], str)
@@ -166,19 +192,21 @@ class TestNoteToDocumentConversion(unittest.TestCase):
             self.assertIsInstance(metadata["wikilinks"], list)
             self.assertIsInstance(metadata["created_date"], str)
             self.assertIsInstance(metadata["modified_date"], str)
-            
+
             # Verify content format follows expected pattern
             expected_pattern = f"{metadata['title']} | {metadata['heading']}"
-            self.assertTrue(doc.content.startswith(expected_pattern), 
-                          f"Content should start with '{expected_pattern}'")
-            
+            self.assertTrue(
+                doc.content.startswith(expected_pattern),
+                f"Content should start with '{expected_pattern}'",
+            )
+
             # Verify embedding field is initially None
             self.assertIsNone(doc.embedding)
 
     def test_empty_note_handling(self):
         """Test processing of empty or minimal notes."""
         # Create a truly empty note file for testing
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
             f.write("# Empty Note\n\n")
             temp_path = f.name
 
@@ -197,19 +225,30 @@ class TestNoteToDocumentConversion(unittest.TestCase):
 
         try:
             documents = list(self.processor.process_file(temp_path))
-            self.assertEqual(len(documents), 1, "Should produce one document for note without headings")
-            
+            self.assertEqual(
+                len(documents),
+                1,
+                "Should produce one document for note without headings",
+            )
+
             doc = documents[0]
-            self.assertIsInstance(doc, ProcessedDocument)
             self.assertIsInstance(doc.id, str)
             # Verify ID format for notes without headings
             self.assertTrue("::" in doc.id, "Document ID should contain '::' separator")
             parts = doc.id.split("::")
             self.assertEqual(len(parts), 2, "Document ID should have exactly two parts")
-            self.assertTrue(parts[1].isdigit(), "Second part should be numeric section index")
+            self.assertTrue(
+                parts[1].isdigit(), "Second part should be numeric section index"
+            )
             self.assertIn("This is a note without any headings", doc.content)
-            self.assertEqual(doc.metadata["heading"], "<No Heading>", "Heading should be '<No Heading>' for notes without sections")
-            self.assertEqual(doc.metadata["level"], 0, "Level should be 0 for notes without sections")
+            self.assertEqual(
+                doc.metadata["heading"],
+                "<No Heading>",
+                "Heading should be '<No Heading>' for notes without sections",
+            )
+            self.assertEqual(
+                doc.metadata["level"], 0, "Level should be 0 for notes without sections"
+            )
             self.assertIsNone(doc.embedding)
         finally:
             os.unlink(temp_path)
