@@ -62,42 +62,46 @@ class TestRetrieverIntegration(unittest.TestCase):
             if os.path.exists(cls.db_path):
                 shutil.rmtree(cls.db_path)
 
-            # 1. Prepare LangChain Document objects
-            langchain_docs = []
+            # Initialize VectorStoreManager
+            cls.vector_manager = VectorStoreManager(
+                db_path=cls.db_path,
+                collection_name=cls.collection_name
+            )
+
+            # Create and store documents
+            documents = []
+            doc_ids = []
             cls.sections_per_note = {}
+            
             for note_file in note_files:
                 note = Note.from_file(note_file)
                 cls.sections_per_note[note.title] = len(note.content_sections)
-                for section in note.content_sections:
-                    embedding_text = create_embedding_text(
-                        note.title, section.heading, section.content
-                    )
+                
+                for section_idx, section in enumerate(note.content_sections):
+                    # Create document content from section
+                    content = f"{note.title}\n{section.heading}\n{section.content}"
+                    doc_id = f"{note.title}_{section_idx}"
+                    
                     metadata = {
                         "title": note.title,
                         "file_path": note.file_path,
                         "created_date": note.created_date.isoformat(),
                         "modified_date": note.modified_date.isoformat(),
-                        "tags": ",".join(note.tag_wikilinks)
-                        if note.tag_wikilinks
-                        else "",
-                        "wikilinks": ",".join(note.wikilinks) if note.wikilinks else "",
+                        "tags": note.tag_wikilinks if note.tag_wikilinks else [],
+                        "wikilinks": note.wikilinks if note.wikilinks else [],
                         "heading": section.heading,
                         "level": section.level,
                     }
-                    doc = Document(page_content=embedding_text, metadata=metadata)
-                    langchain_docs.append(doc)
+                    documents.append(Document(page_content=content, metadata=metadata))
+                    doc_ids.append(doc_id)
 
-            if not langchain_docs:
+            if not documents:
                 raise ValueError(
                     "No documents were created to populate the test database."
                 )
 
-            cls.vectorstore = Chroma.from_documents(
-                documents=langchain_docs,
-                embedding=llama_embedder,
-                collection_name=cls.collection_name,
-                persist_directory=cls.db_path,
-            )
+            # Store all documents
+            cls.vector_manager.store_documents(documents, doc_ids)
 
             # Write checksum
             os.makedirs(cls.db_path, exist_ok=True)
@@ -107,10 +111,9 @@ class TestRetrieverIntegration(unittest.TestCase):
             print(f"Rebuilt test database at {cls.db_path}")
         else:
             # Load existing vectorstore
-            cls.vectorstore = Chroma(
-                collection_name=cls.collection_name,
-                embedding_function=llama_embedder,
-                persist_directory=cls.db_path,
+            cls.vector_manager = VectorStoreManager(
+                db_path=cls.db_path,
+                collection_name=cls.collection_name
             )
 
             # Recreate sections per note mapping for tests
@@ -136,7 +139,7 @@ class TestRetrieverIntegration(unittest.TestCase):
             "filters": [],
             "response_format": "selective_context",
         }
-        context_package = retrieve_context(query_plan, self.vectorstore)
+        context_package = retrieve_context(query_plan, self.vector_manager)
         self.assertIn("results", context_package)
         self.assertGreater(len(context_package["results"]), 0)
         # Allow for different relevant results due to embedding similarities
@@ -174,7 +177,7 @@ class TestRetrieverIntegration(unittest.TestCase):
             ],
             "response_format": "selective_context",
         }
-        context_package = retrieve_context(query_plan, self.vectorstore)
+        context_package = retrieve_context(query_plan, self.vector_manager)
         self.assertIn("results", context_package)
         self.assertEqual(
             len(context_package["results"]),
