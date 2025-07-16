@@ -10,206 +10,209 @@ This module tests:
 """
 
 import unittest
-import tempfile
 import os
+import tempfile
 from pathlib import Path
-from datetime import datetime
 
-try:
-    from src.core.note import Note
-    from src.core.parsing import ContentSection
-    from config import get_embedding_function
-except ImportError:
-    # Allow tests to run despite missing implementations
-    Note = None
-    ContentSection = None
+from src.core.note import Note
+from src.core.ingestion.processor import NoteProcessor, ProcessedDocument
+from config import get_embedding_function
 
 
 class TestEmbeddingGeneration(unittest.TestCase):
     """Test embedding generation from note structures."""
 
     def setUp(self):
-        """Set up test environment."""
-        self.temp_dir = tempfile.mkdtemp()
+        """Set up test fixtures."""
+        self.sample_notes_dir = Path("data/sample_notes")
+        self.processor = NoteProcessor()
+        self.embedder = get_embedding_function()
 
     def test_single_section_embedding(self):
-        """Test embedding generation for a single note section using new pipeline."""
-        try:
-            from src.core.note import Note
-            from src.core.ingestion.processor import NoteProcessor
-            from config import get_embedding_function
-        except ImportError as e:
-            self.skipTest(f"Required modules not available: {e}")
+        """Test embedding generation using sample note with single heading."""
+        sample_path = self.sample_notes_dir / "sed.md"
+        self.assertTrue(sample_path.exists(), f"Sample note not found: {sample_path}")
 
-        # Create test note structure
-        note_content = """# Note Title
-This is the main content.
-Tags: [[Tags]]"""
+        note = Note.from_file(str(sample_path))
+        documents = list(self.processor.process_note(note))
 
-        note_path = Path(self.temp_dir) / "test.md"
-        with open(note_path, "w", encoding="utf-8") as f:
-            f.write(note_content)
+        self.assertGreater(
+            len(documents), 0, "Should generate at least one embedding document"
+        )
 
-        # Parse note using new pipeline
-        note = Note.from_file(str(note_path))
-        processor = NoteProcessor()
-        documents = list(processor.process_note(note))
-        self.assertGreater(len(documents), 0)
-
-        # Generate embeddings using new embedder
-        embedder = get_embedding_function()
-        if embedder:
-            for doc in documents:
-                embeddings = embedder.embed_documents([doc.content])
-                self.assertEqual(len(embeddings), 1)
-                self.assertIsInstance(embeddings[0], list)
-                self.assertIsInstance(embeddings[0][0], float)
+        # Test embedding generation and document structure
+        if self.embedder:
+            test_content = documents[0].content
+            embeddings = self.embedder.embed_documents([test_content])
+            
+            # Verify embedding structure
+            self.assertIsInstance(embeddings, list, "Embedder should return a list")
+            self.assertIsInstance(embeddings[0], list, "First element should be embedding vector")
+            self.assertGreater(len(embeddings[0]), 100, "Embedding should have reasonable dimension")
+            
+            # Test embedding assignment to document
+            doc = documents[0]
+            doc.embedding = embeddings[0]
+            self.assertIsNotNone(doc.embedding, "Document should have embedding assigned")
+            self.assertIsInstance(doc.embedding, list, "Document embedding should be a list")
+            self.assertGreater(len(doc.embedding), 100, "Document embedding should have reasonable dimension")
 
     def test_content_section_format(self):
         """Test embedding text format using new processor structure."""
-        try:
-            from src.core.ingestion.processor import NoteProcessor
-        except ImportError:
-            self.skipTest("NoteProcessor not available")
-
-        # Test the new processor format: "{note.title} | {heading}\n\n{content}"
         title = "RAG Systems"
         heading = "Hybrid Retrieval"
         content = "A hybrid approach combines semantic and keyword search"
 
-        processor = NoteProcessor()
-        embedding_text = processor.create_embedding_text(title, heading, content)
+        embedding_text = self.processor.create_embedding_text(title, heading, content)
 
         # Verify the correct format is used
         expected = f"{title} | {heading}\n\n{content}"
         self.assertEqual(embedding_text, expected)
 
     def test_chroma_document_format(self):
-        """Test document format for ChromaDB storage using new pipeline."""
-        try:
-            from src.core.ingestion.processor import NoteProcessor, ProcessedDocument
-            from config import get_embedding_function
-        except ImportError as e:
-            self.skipTest(f"Required modules not available: {e}")
+        """Test complete document structure for ChromaDB storage using new pipeline."""
+        sample_path = self.sample_notes_dir / "sed.md"
+        self.assertTrue(sample_path.exists(), f"Sample note not found: {sample_path}")
 
-        # Test data using new structure
-        processor = NoteProcessor()
-        embedder = get_embedding_function()
+        documents = list(self.processor.process_file(str(sample_path)))
+        self.assertGreater(len(documents), 0, "Should produce documents")
 
-        # Instead of mock data, test the actual pipeline format
-        # We'll just verify the structure of the processed documents
-        title = "Test Note"
-        heading = "Introduction"
-        content = "Content for introduction"
-
-        content_obj = processor.create_embedding_text(title, heading, content)
-
-        # Verify format matches new pipeline
-        expected = f"{title} | {heading}\n\n{content}"
-        self.assertEqual(content_obj, expected)
-
-        # Test embedding if embedder available
-        if embedder:
-            embeddings = embedder.embed_documents([content_obj])
-            self.assertIsInstance(embeddings[0], list)
-            self.assertIsInstance(embeddings[0][0], float)
+        # Verify complete document structure
+        doc = documents[0]
+        self.assertIsInstance(doc, ProcessedDocument)
+        self.assertIsInstance(doc.id, str)
+        self.assertGreater(len(doc.id), 0, "Document should have non-empty ID")
+        self.assertIsInstance(doc.content, str)
+        self.assertGreater(len(doc.content), 0, "Document should have content")
+        self.assertIsInstance(doc.metadata, dict)
+        
+        # Verify required metadata fields
+        required_fields = ["title", "file_path", "heading", "level", "tags", "wikilinks", "created_date", "modified_date"]
+        for field in required_fields:
+            self.assertIn(field, doc.metadata, f"Document metadata should contain '{field}'")
+        
+        # Verify embedding field exists and is initially None
+        self.assertIsNone(doc.embedding, "Document embedding should initially be None")
 
     def test_real_sample_note_conversion(self):
         """Test with actual sample notes using new pipeline."""
-        if not os.path.exists("data/sample_notes"):
-            self.skipTest("Sample notes directory not found")
+        sample_path = self.sample_notes_dir / "2025 Threat Report - Huntress.md"
+        self.assertTrue(sample_path.exists(), f"Sample note not found: {sample_path}")
 
-        sample_path = Path("data/sample_notes/2025 Threat Report - Huntress.md")
-        if not sample_path.exists():
-            self.skipTest("Sample note not found")
+        note = Note.from_file(str(sample_path))
+        documents = list(self.processor.process_note(note))
 
-        try:
-            from src.core.note import Note
-            from src.core.ingestion.processor import NoteProcessor
-            from config import get_embedding_function
+        self.assertGreater(len(documents), 0, "Should produce at least one document")
 
-            note = Note.from_file(str(sample_path))
-            processor = NoteProcessor()
-
-            # Process note through new pipeline
-            documents = list(processor.process_note(note))
-            self.assertGreater(
-                len(documents), 0, "Should produce at least one document"
-            )
-
-            # Generate embeddings using new embedder
-            embedder = get_embedding_function()
-            if embedder:
-                for doc in documents:
-                    embeddings = embedder.embed_documents([doc.content])
-                    # Verify vector dimension
-                    self.assertGreater(
-                        len(embeddings[0]), 100
-                    )  # Typical embedding size
-
-        except Exception as e:
-            self.skipTest(f"Sample note processing failed: {e}")
+        # Verify document structure and content integrity
+        for doc in documents:
+            self.assertIsInstance(doc, ProcessedDocument)
+            self.assertIsInstance(doc.id, str)
+            # Verify ID format - contains filename and numeric section index
+            self.assertTrue("::" in doc.id, "Document ID should contain '::' separator")
+            parts = doc.id.split("::")
+            self.assertEqual(len(parts), 2, "Document ID should have exactly two parts")
+            self.assertTrue(parts[1].isdigit(), "Second part should be numeric section index")
+            self.assertIsInstance(doc.content, str)
+            self.assertGreater(len(doc.content), 0, "Document should have non-empty content")
+            self.assertIn(note.title, doc.content, "Document content should contain note title")
+            self.assertIsInstance(doc.metadata, dict)
+            
+            # Verify metadata content
+            self.assertEqual(doc.metadata["title"], note.title)
+            self.assertEqual(doc.metadata["file_path"], str(note.file_path))
+            self.assertIsInstance(doc.metadata["tags"], list)
+            self.assertIsInstance(doc.metadata["wikilinks"], list)
+            self.assertIsInstance(doc.metadata["created_date"], str)
+            self.assertIsInstance(doc.metadata["modified_date"], str)
+            
+            # Verify embedding field is initially None
+            self.assertIsNone(doc.embedding)
 
 
 class TestNoteToDocumentConversion(unittest.TestCase):
     """Test conversion from Note objects to embedded documents using new pipeline."""
 
+    def setUp(self):
+        """Set up test fixtures."""
+        self.sample_notes_dir = Path("data/sample_notes")
+        self.processor = NoteProcessor()
+
     def test_full_note_parsing_workflow(self):
-        """Test complete workflow from file to embedded documents using new ingestion."""
+        """Test complete workflow using actual sample note with multiple sections."""
+        sample_path = (
+            self.sample_notes_dir / "Downloading and Uploading Files in Powershell.md"
+        )
+        self.assertTrue(sample_path.exists(), f"Sample note not found: {sample_path}")
+
+        documents = list(self.processor.process_file(str(sample_path)))
+        self.assertGreater(len(documents), 0, "Should produce at least one document")
+
+        # Verify complete document structure and workflow
+        for doc in documents:
+            self.assertIsInstance(doc, ProcessedDocument)
+            self.assertIsInstance(doc.id, str)
+            self.assertIsInstance(doc.content, str)
+            self.assertGreater(len(doc.content), 0)
+            self.assertIsInstance(doc.metadata, dict)
+            
+            # Verify all required metadata fields exist and have correct types
+            metadata = doc.metadata
+            self.assertIsInstance(metadata["title"], str)
+            self.assertIsInstance(metadata["file_path"], str)
+            self.assertIsInstance(metadata["heading"], str)
+            self.assertIsInstance(metadata["level"], int)
+            self.assertIsInstance(metadata["tags"], list)
+            self.assertIsInstance(metadata["wikilinks"], list)
+            self.assertIsInstance(metadata["created_date"], str)
+            self.assertIsInstance(metadata["modified_date"], str)
+            
+            # Verify content format follows expected pattern
+            expected_pattern = f"{metadata['title']} | {metadata['heading']}"
+            self.assertTrue(doc.content.startswith(expected_pattern), 
+                          f"Content should start with '{expected_pattern}'")
+            
+            # Verify embedding field is initially None
+            self.assertIsNone(doc.embedding)
+
+    def test_empty_note_handling(self):
+        """Test processing of empty or minimal notes."""
+        # Create a truly empty note file for testing
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
+            f.write("# Empty Note\n\n")
+            temp_path = f.name
+
         try:
-            from src.core.note import Note
-            from src.core.ingestion.processor import NoteProcessor
-            from config import get_embedding_function
-        except ImportError as e:
-            self.skipTest(f"Required modules not available: {e}")
-
-        temp_dir = tempfile.mkdtemp()
-
-        try:
-            # Create realistic test note
-            note_content = """# Project Overview - RAG Architecture
-This note covers the RAG micro-agent design.
-
-## Core Components
-The system has three main parts: query planner, retriever, and packaging.
-
-## Technical Stack
-Uses Python, ChromaDB, and local LLM models.
-
-Tags: [[python]], [[rag]], [[architecture]]"""
-
-            note_path = Path(temp_dir) / "overview.md"
-            with open(note_path, "w", encoding="utf-8") as f:
-                f.write(note_content)
-
-            # Process note using new pipeline
-            processor = NoteProcessor()
-            documents = list(processor.process_file(str(note_path)))
-
-            # Verify we get documents
-            self.assertGreater(len(documents), 0)
-
-            # Generate embeddings using new embedder (optional check)
-            embedder = get_embedding_function()
-            if embedder:
-                for doc in documents:
-                    embeddings = embedder.embed_documents([doc.content])
-                    # Verify valid embeddings using actual format
-                    self.assertIsInstance(embeddings, list)
-                    self.assertEqual(len(embeddings), 1)
-                    self.assertIsInstance(embeddings[0], list)
-                    self.assertIsInstance(embeddings[0][0], (int, float))
-
-            # Verify metadata structure in new system
-            for doc in documents:
-                self.assertIn("title", doc.metadata)
-                self.assertIn("tags", doc.metadata)
-                self.assertIn("file_path", doc.metadata)
-
+            documents = list(self.processor.process_file(temp_path))
+            # Empty content should produce 0 documents
+            self.assertEqual(len(documents), 0)
         finally:
-            import shutil
+            os.unlink(temp_path)
 
-            shutil.rmtree(temp_dir)
+    def test_note_without_headings(self):
+        """Test processing notes without markdown headings."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
+            f.write("This is a note without any headings\nJust plain content here.")
+            temp_path = f.name
+
+        try:
+            documents = list(self.processor.process_file(temp_path))
+            self.assertEqual(len(documents), 1, "Should produce one document for note without headings")
+            
+            doc = documents[0]
+            self.assertIsInstance(doc, ProcessedDocument)
+            self.assertIsInstance(doc.id, str)
+            # Verify ID format for notes without headings
+            self.assertTrue("::" in doc.id, "Document ID should contain '::' separator")
+            parts = doc.id.split("::")
+            self.assertEqual(len(parts), 2, "Document ID should have exactly two parts")
+            self.assertTrue(parts[1].isdigit(), "Second part should be numeric section index")
+            self.assertIn("This is a note without any headings", doc.content)
+            self.assertEqual(doc.metadata["heading"], "<No Heading>", "Heading should be '<No Heading>' for notes without sections")
+            self.assertEqual(doc.metadata["level"], 0, "Level should be 0 for notes without sections")
+            self.assertIsNone(doc.embedding)
+        finally:
+            os.unlink(temp_path)
 
 
 if __name__ == "__main__":
