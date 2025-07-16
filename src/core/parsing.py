@@ -87,7 +87,7 @@ def parse_headings(text: str) -> List[ContentSection]:
                         current_line = lines[i]
 
                         # Check if this line is a heading
-                        heading_check = re.match(r"^(#+)\\s+", current_line)
+                        heading_check = re.match(r"^(#+)\s+", current_line)
                         if heading_check:
                             current_level = len(heading_check.group(1))
                             if current_level <= target_level:
