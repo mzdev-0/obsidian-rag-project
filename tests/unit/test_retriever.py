@@ -8,12 +8,11 @@ import shutil
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
 # LangChain and project-specific imports
-from langchain_community.vectorstores import Chroma
-from langchain_core.documents import Document
+from langchain.schema import Document
 
 from src.core.note import Note
-from src.core.embed import llama_embedder, create_embedding_text
 from src.core.retriever import retrieve_context
+from src.core.ingestion.vector_manager import VectorStoreManager
 
 
 class TestRetrieverIntegration(unittest.TestCase):
@@ -30,37 +29,39 @@ class TestRetrieverIntegration(unittest.TestCase):
         """
         cls.db_path = "../.test_chroma_db_persistent"
         cls.collection_name = "test_retriever_lc_collection"
-        repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        repo_root = os.path.dirname(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        )
         cls.note_files_path = os.path.join(repo_root, "data", "sample_notes", "*.md")
-        
+
         import hashlib
-        
+
         # Generate checksum of test files to detect changes
         note_files = sorted(glob.glob(cls.note_files_path))
         if not note_files:
             raise FileNotFoundError(
                 f"No test notes found at path: {cls.note_files_path}"
             )
-            
+
         hasher = hashlib.md5()
         for file_path in note_files:
-            with open(file_path, 'rb') as f:
+            with open(file_path, "rb") as f:
                 hasher.update(f.read())
         current_checksum = hasher.hexdigest()
         checksum_file = os.path.join(cls.db_path, ".test_checksum")
-        
+
         # Check if we need to rebuild
         rebuild_needed = True
         if os.path.exists(checksum_file):
-            with open(checksum_file, 'r') as f:
+            with open(checksum_file, "r") as f:
                 if f.read().strip() == current_checksum:
                     rebuild_needed = False
-        
+
         if rebuild_needed:
             # Clean old DB and create new one
             if os.path.exists(cls.db_path):
                 shutil.rmtree(cls.db_path)
-                
+
             # 1. Prepare LangChain Document objects
             langchain_docs = []
             cls.sections_per_note = {}
@@ -76,7 +77,9 @@ class TestRetrieverIntegration(unittest.TestCase):
                         "file_path": note.file_path,
                         "created_date": note.created_date.isoformat(),
                         "modified_date": note.modified_date.isoformat(),
-                        "tags": ",".join(note.tag_wikilinks) if note.tag_wikilinks else "",
+                        "tags": ",".join(note.tag_wikilinks)
+                        if note.tag_wikilinks
+                        else "",
                         "wikilinks": ",".join(note.wikilinks) if note.wikilinks else "",
                         "heading": section.heading,
                         "level": section.level,
@@ -85,7 +88,9 @@ class TestRetrieverIntegration(unittest.TestCase):
                     langchain_docs.append(doc)
 
             if not langchain_docs:
-                raise ValueError("No documents were created to populate the test database.")
+                raise ValueError(
+                    "No documents were created to populate the test database."
+                )
 
             cls.vectorstore = Chroma.from_documents(
                 documents=langchain_docs,
@@ -93,12 +98,12 @@ class TestRetrieverIntegration(unittest.TestCase):
                 collection_name=cls.collection_name,
                 persist_directory=cls.db_path,
             )
-            
+
             # Write checksum
             os.makedirs(cls.db_path, exist_ok=True)
-            with open(checksum_file, 'w') as f:
+            with open(checksum_file, "w") as f:
                 f.write(current_checksum)
-            
+
             print(f"Rebuilt test database at {cls.db_path}")
         else:
             # Load existing vectorstore
@@ -107,13 +112,13 @@ class TestRetrieverIntegration(unittest.TestCase):
                 embedding_function=llama_embedder,
                 persist_directory=cls.db_path,
             )
-            
+
             # Recreate sections per note mapping for tests
             cls.sections_per_note = {}
             for note_file in note_files:
                 note = Note.from_file(note_file)
                 cls.sections_per_note[note.title] = len(note.content_sections)
-            
+
             print(f"Using existing test database at {cls.db_path}")
 
     @classmethod
@@ -135,11 +140,21 @@ class TestRetrieverIntegration(unittest.TestCase):
         self.assertIn("results", context_package)
         self.assertGreater(len(context_package["results"]), 0)
         # Allow for different relevant results due to embedding similarities
-        found_titles = [result["title"] for result in context_package["results"][:3]]  # Check top 3
-        relevant_found = any(title in ["Evading Detection when Transferring Files", "Transferring Files with Python"] 
-                           for title in found_titles)
-        self.assertTrue(relevant_found, 
-                       f"Expected relevant file transfer content not found in top results: {found_titles[:5]}")
+        found_titles = [
+            result["title"] for result in context_package["results"][:3]
+        ]  # Check top 3
+        relevant_found = any(
+            title
+            in [
+                "Evading Detection when Transferring Files",
+                "Transferring Files with Python",
+            ]
+            for title in found_titles
+        )
+        self.assertTrue(
+            relevant_found,
+            f"Expected relevant file transfer content not found in top results: {found_titles[:5]}",
+        )
 
     def test_metadata_get_does_not_deduplicate_results(self):
         """CRITICAL: Test the 'get' path returns all matching sections from a single note."""
