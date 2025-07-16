@@ -64,31 +64,30 @@ class TestRetrieverIntegration(unittest.TestCase):
 
             # Initialize VectorStoreManager
             cls.vector_manager = VectorStoreManager(
-                db_path=cls.db_path,
-                collection_name=cls.collection_name
+                db_path=cls.db_path, collection_name=cls.collection_name
             )
 
             # Create and store documents
             documents = []
             doc_ids = []
             cls.sections_per_note = {}
-            
+
             for note_file in note_files:
                 note = Note.from_file(note_file)
                 cls.sections_per_note[note.title] = len(note.content_sections)
-                
+
                 for section_idx, section in enumerate(note.content_sections):
                     # Create document content from section
                     content = f"{note.title}\n{section.heading}\n{section.content}"
                     doc_id = f"{note.title}_{section_idx}"
-                    
+
                     metadata = {
                         "title": note.title,
                         "file_path": note.file_path,
                         "created_date": note.created_date.isoformat(),
                         "modified_date": note.modified_date.isoformat(),
-                        "tags": note.tag_wikilinks if note.tag_wikilinks else [],
-                        "wikilinks": note.wikilinks if note.wikilinks else [],
+                        "tags": note.tag_wikilinks,
+                        "wikilinks": note.wikilinks,
                         "heading": section.heading,
                         "level": section.level,
                     }
@@ -112,8 +111,7 @@ class TestRetrieverIntegration(unittest.TestCase):
         else:
             # Load existing vectorstore
             cls.vector_manager = VectorStoreManager(
-                db_path=cls.db_path,
-                collection_name=cls.collection_name
+                db_path=cls.db_path, collection_name=cls.collection_name
             )
 
             # Recreate sections per note mapping for tests
