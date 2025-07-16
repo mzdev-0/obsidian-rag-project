@@ -1,10 +1,8 @@
 import re
-from typing import List
-from dataclasses import dataclass, field
-from typing import List, Optional, Union
+from typing import List, Optional
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-
 
 Vector = List[float]
 
@@ -19,42 +17,9 @@ class ContentSection:
     level: int  # e.g., 1 for #, 2 for ##
     embedding: Optional[Vector] = None
 
-    def to_document(self, note_title: str, file_path: str, tags: List[str], wikilinks: List[str], 
-                   created_date: datetime, modified_date: datetime) -> "DocumentData":
-        """Convert this section to a document format suitable for vector storage."""
-        from dataclasses import dataclass
-        from typing import Dict
-        
-        @dataclass
-        class DocumentData:
-            id: str
-            content: str
-            metadata: Dict
-        
-        # Create embedding text
-        content = f"{note_title} | {self.heading}\n\n{self.content}".strip()
-        
-        # Create metadata
-        metadata = {
-            "title": note_title,
-            "file_path": str(file_path),
-            "heading": self.heading,
-            "level": self.level,
-            "tags": ",".join(tags) if tags else "",
-            "wikilinks": ",".join(wikilinks) if wikilinks else "",
-            "created_date": created_date.isoformat(),
-            "modified_date": modified_date.isoformat(),
-        }
-        
-        return DocumentData(
-            id=f"{Path(file_path).stem}::{self.id}",
-            content=content,
-            metadata=metadata
-        )
-
     def to_langchain_document(self, note_title: str, file_path: str, tags: List[str], 
-                            wikilinks: List[str], created_date: datetime, 
-                            modified_date: datetime):
+                             wikilinks: List[str], created_date: datetime, 
+                             modified_date: datetime):
         """Convert this section to a LangChain Document."""
         from langchain.schema import Document
         from pathlib import Path
