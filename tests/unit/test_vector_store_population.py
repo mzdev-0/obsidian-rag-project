@@ -8,17 +8,13 @@ based on the architecture defined in technical specification.
 import unittest
 import tempfile
 import shutil
-from unittest.mock import MagicMock, patch
 from pathlib import Path
 from datetime import datetime
 
-try:
-    from langchain_community.vectorstores import Chroma
-    from src.core.embed import llama_embedder
-except ImportError:
-    # Allow tests to run despite missing dependencies
-    Chroma = None
-    llama_embedder = MagicMock()
+from langchain_community.vectorstores import Chroma
+from src.core.ingestion.vector_manager import get_embedder
+from src.core.note import Note
+from src.core.ingestion.processor import NoteProcessor
 
 
 class TestVectorStorePopulation(unittest.TestCase):
@@ -28,247 +24,398 @@ class TestVectorStorePopulation(unittest.TestCase):
         """Set up tests."""
         self.temp_dir = tempfile.mkdtemp()
         self.db_path = Path(self.temp_dir) / "chroma_db"
+        self.embedder = get_embedder()
 
     def tearDown(self):
         """Clean up tests."""
         import shutil
+
         if Path(self.temp_dir).exists():
             shutil.rmtree(self.temp_dir)
 
     def test_chroma_document_format(self):
         """Test document format matches ChromaDB requirements."""
-        if Chroma is None:
-            self.skipTest("ChromaDB not available")
-        
-        # Test data based on existing note.py structure
-        documents = [
-            {
-                'content': "Test Title | Introduction\n\nThis is test content",
-                'metadata': {
-                    'title': 'Test Title',
-                    'file_path': '/test/note.md',
-                    'heading': 'Introduction',
-                    'level': 1,
-                    'tags': ['test'],
-                    'wikilinks': [['link1']],
-                    'created_date': '2024-01-01T00:00:00',
-                    'modified_date': '2024-01-01T00:00:00'
-                }
-            }
-        ]
-        
-        ids = ['test_note_0']
-        embeddings = [[0.1] * 768]  # Mock embedding
-        
-        # Test document structure
-        self.assertEqual(len(documents), 1)
-        self.assertIn('content', documents[0])
-        self.assertIn('metadata', documents[0])
-        self.assertIn('title', documents[0]['metadata'])
-        self.assertIn('tags', documents[0]['metadata'])
+        # Create a test note file
+        note_content = """# Test Title
+This is test content with some [[wikilinks]] and #test tags.
 
-    def test_empty_collection_creation(self):
-        """Test creation of empty ChromaDB collection."""
-        if Chroma is None:
-            self.skipTest("ChromaDB not available")
-        
-        # Test creating a collection just like in main.py
-        vectorstore = Chroma(
-            collection_name="obsidian_notes",
-            embedding_function=llama_embedder, 
-            persist_directory=str(self.db_path)
-        )
-        
-        # Verify collection is created
-        self.assertEqual(vectorstore._collection.count(), 0)
+## Introduction
+More content here."""
 
-    def test_single_document_upsert(self):
-        """Test upserting a single document."""
-        if Chroma is None:
-            self.skipTest("ChromaDB not available")
-        
-        vectorstore = Chroma(
-            collection_name="obsidian_notes",
-            embedding_function=llama_embedder,
-            persist_directory=str(self.db_path)
-        )
-        
-        # Test data matching technical spec
-        texts = ["Test Title | Introduction\n\nThis is test content"]
-        metadatas = [{
-            'title': 'Test Title',
-            'file_path': '/test/note.md',
-            'created_date': datetime.now().isoformat(),
-            'modified_date': datetime.now().isoformat(),
-            'heading': 'Introduction',
-            'level': 1,
-            'tags': ['test'],
-            'wikilinks': ['link1']
-        }]
-        ids = ['note_0']
-        
-        # Import and test if available
-        try:
-            vectorstore.add_texts(texts=texts, metadatas=metadatas, ids=ids)
-            self.assertEqual(vectorstore._collection.count(), 1)
-        except ImportError:
-            self.skipTest("LangChain Chroma integration not available")
+        note_path = Path(self.temp_dir) / "test_note.md"
+        with open(note_path, "w", encoding="utf-8") as f:
+            f.write(note_content)
 
-    def test_metadata_schema_validation(self):
-        """Test metadata field validation for ChromaDB storage."""
-        # Test required metadata fields per technical spec
-        required_metadata = {
-            'title',  # Note title
-            'file_path',  # Original file path
-            'created_date',  # ISO string
-            'modified_date',  # ISO string
-            'tags',  # List of wikilinks from Tags section
-            'wikilinks',  # List of other wikilinks
-            'heading',  # Section heading
-            'level'  # Heading level (1-6)
-        }
-        
-        # Simulate metadata provided to Chroma
-        test_metadata = {
-            'title': 'Test Note',
-            'file_path': '/test/notes/test.md',
-            'created_date': '2024-01-01T00:00:00',
-            'modified_date': '2024-01-01T00:00:00',
-            'tags': ['#python', '#development'],
-            'wikilinks': [['linked_note']],
-            'heading': 'Main Section',
-            'level': 1
-        }
-        
-        # Verify all required fields are present
-        for field in required_metadata:
-            self.assertIn(field, test_metadata)
-            
-        # Verify datetime fields are strings
-        self.assertIsInstance(test_metadata['created_date'], str)
-        self.assertIsInstance(test_metadata['modified_date'], str)
+        # Process note using actual NoteProcessor
+        note = Note.from_file(str(note_path))
+        processor = NoteProcessor()
+        documents = list(processor.process_note(note))
 
-    def test_document_id_format(self):
-        """Test document ID format for uniqueness."""
-        # Test ID format: "{file_path}::{section_id}"
-        test_cases = [
-            ('/notes/test.md', '0', 'notes_test.md::0'),
-            ('/deep/path/to/note.md', 'section_1', 'deep_path_to_note.md::section_1'),
-            ('test.md', 'intro', 'test.md::intro')
-        ]
-        
-        for file_path, section_id, expected in test_cases:
-            actual = self._generate_document_id(file_path, section_id)
-            self.assertIsInstance(actual, str)
-            self.assertTrue('::' in actual)
-
-    def _generate_document_id(self, file_path: str, section_id: str) -> str:
-        """Helper to generate document ID per technical spec."""
-        # Use relative path and replace separators for consistency
-        rel_path = Path(file_path).name.replace('/', '_')
-        return f"{rel_path}::{section_id}"
-
-    def test_bulk_document_storage(self):
-        """Test storing multiple documents efficiently."""
-        # Test typical note with multiple sections
-        document_data = [
-            {
-                'text': "Note | Introduction\n\nIntro content",
-                'metadata': {'title': 'Note', 'heading': 'Introduction', 'level': 1, 'file_path': '/note.md'}
-            },
-            {
-                'text': "Note | Details\n\nDetail content", 
-                'metadata': {'title': 'Note', 'heading': 'Details', 'level': 2, 'file_path': '/note.md'}
-            }
-        ]
-        
-        # Test bulk operation structure
-        texts = [d['text'] for d in document_data]
-        metadatas = [d['metadata'] for d in document_data]
-        ids = [f"note_{i}" for i in range(len(document_data))]
-        
-        self.assertEqual(len(texts), 2)
-        self.assertEqual(len(metadatas), 2)
-        self.assertEqual(len(ids), 2)
-        
-        # Verify metadata consistency
-        for metadata in metadatas:
-            self.assertIn('file_path', metadata)
-            self.assertIn('heading', metadata)
-
-    def test_document_retrieval_after_storage(self):
-        """Test retrieving documents after storing in vector store."""
-        if Chroma is None:
-            self.skipTest("ChromaDB not available")
-        
         # Create vector store
         vectorstore = Chroma(
             collection_name="obsidian_notes",
-            embedding_function=llama_embedder,
-            persist_directory=str(self.db_path)
+            embedding_function=self.embedder,
+            persist_directory=str(self.db_path),
         )
-        
-        # Test data matching actual app usage
-        test_text = "RAG Architecture | Design Decisions\n\nKey design decisions for the micro-agent"
-        test_metadata = {
-            'title': 'RAG Architecture',
-            'file_path': '/notes/architecture.md',
-            'created_date': datetime.now().isoformat(),
-            'modified_date': datetime.now().isoformat(),
-            'heading': 'Design Decisions',
-            'level': 2,
-            'tags': ['architecture', 'design'],
-            'wikilinks': [['technical-spec']]
+
+        # Test basic storage
+        texts = [doc.content for doc in documents]
+        metadatas = [doc.metadata for doc in documents]
+        ids = [doc.id for doc in documents]
+
+        # Test actual storage
+        vectorstore.add_texts(texts=texts, metadatas=metadatas, ids=ids)
+        self.assertEqual(vectorstore._collection.count(), len(documents))
+
+    def test_metadata_schema_validation(self):
+        """Test metadata field validation for ChromaDB storage."""
+        # Create test note to validate actual metadata structure
+        note_content = """# Test Note
+This is a test note with [[linked_note]] and #python #development tags.
+
+## Main Section
+Content for the main section."""
+
+        note_path = Path(self.temp_dir) / "test_note.md"
+        with open(note_path, "w", encoding="utf-8") as f:
+            f.write(note_content)
+
+        # Process note to get actual metadata
+        note = Note.from_file(str(note_path))
+        processor = NoteProcessor()
+        documents = list(processor.process_note(note))
+
+        # Verify all documents have required metadata
+        required_metadata = {
+            "title",
+            "file_path",
+            "created_date",
+            "modified_date",
+            "tags",
+            "wikilinks",
+            "heading",
+            "level",
         }
-        
-        try:
-            # Test storage and retrieval
-            vectorstore.add_texts(
-                texts=[test_text],
-                metadatas=[test_metadata],
-                ids=['arch_design_001']
-            )
-            
-            # Test retrieval
-            results = vectorstore.similarity_search("architecture decisions", k=1)
-            
-            self.assertEqual(len(results), 1)
-            self.assertEqual(results[0].metadata['title'], 'RAG Architecture')
-            
-        except Exception as e:
-            self.skipTest(f"ChromaDB integration test failed: {e}")
+
+        for doc in documents:
+            metadata = doc.metadata
+            for field in required_metadata:
+                self.assertIn(field, metadata)
+
+            # Verify datetime fields are strings
+            self.assertIsInstance(metadata["created_date"], str)
+            self.assertIsInstance(metadata["modified_date"], str)
+
+            # Verify data types
+            self.assertIsInstance(metadata["tags"], list)
+            self.assertIsInstance(metadata["wikilinks"], list)
+            self.assertIsInstance(metadata["level"], int)
+            self.assertTrue(1 <= metadata["level"] <= 6)
+
+    def test_document_id_format(self):
+        """Test document ID format generated by NoteProcessor."""
+        # Create test note to validate actual ID generation
+        note_content = """# ID Test Note
+Testing document ID generation.
+
+## Section 1
+First section content.
+
+## Section 2
+Second section content."""
+
+        note_path = Path(self.temp_dir) / "id_test.md"
+        with open(note_path, "w", encoding="utf-8") as f:
+            f.write(note_content)
+
+        # Process note to get actual document IDs
+        note = Note.from_file(str(note_path))
+        processor = NoteProcessor()
+        documents = list(processor.process_note(note))
+
+        # Test document ID format
+        for doc in documents:
+            doc_id = doc.id
+            self.assertIsInstance(doc_id, str)
+            self.assertTrue("::" in doc_id)
+
+            # Verify ID contains filename and section info
+            parts = doc_id.split("::")
+            self.assertEqual(len(parts), 2)
+            self.assertTrue(parts[0].startswith("id_test"))
+            self.assertTrue(parts[1].isdigit() or parts[1].startswith("section_"))
+
+            # Verify ID uniqueness
+            ids = [d.id for d in documents]
+            self.assertEqual(len(ids), len(set(ids)))
+
+    def test_chromadb_persistence(self):
+        """Test that ChromaDB properly persists data between sessions."""
+        if self.embedder is None:
+            self.skipTest("Embedding function not available")
+
+        # Create test note
+        note_content = """# Persistence Test
+Testing ChromaDB persistence.
+
+## Data Section
+This data should persist across sessions."""
+
+        note_path = Path(self.temp_dir) / "persistence.md"
+        with open(note_path, "w", encoding="utf-8") as f:
+            f.write(note_content)
+
+        # Process note
+        note = Note.from_file(str(note_path))
+        processor = NoteProcessor()
+        documents = list(processor.process_note(note))
+
+        # First session - store data
+        vectorstore1 = Chroma(
+            collection_name="obsidian_notes",
+            embedding_function=self.embedder,
+            persist_directory=str(self.db_path),
+        )
+
+        texts = [doc.content for doc in documents]
+        metadatas = [doc.metadata for doc in documents]
+        ids = [doc.id for doc in documents]
+
+        vectorstore1.add_texts(texts=texts, metadatas=metadatas, ids=ids)
+        initial_count = vectorstore1._collection.count()
+        self.assertGreater(initial_count, 0)
+
+        # Second session - verify persistence
+        vectorstore2 = Chroma(
+            collection_name="obsidian_notes",
+            embedding_function=self.embedder,
+            persist_directory=str(self.db_path),
+        )
+
+        self.assertEqual(vectorstore2._collection.count(), initial_count)
+
+        # Test retrieval from persisted data
+        results = vectorstore2.similarity_search("persistence", k=1)
+        self.assertGreater(len(results), 0)
+        self.assertIn("persistence", results[0].page_content.lower())
+
+    def test_vector_similarity_search(self):
+        """Test vector similarity search functionality."""
+        if self.embedder is None:
+            self.skipTest("Embedding function not available")
+
+        # Create test notes with distinct content
+        note1_content = """# Python Programming
+Python is a high-level programming language.
+
+## Features
+Python has dynamic typing and automatic memory management."""
+
+        note2_content = """# JavaScript Development
+JavaScript is used for web development.
+
+## Usage
+JavaScript runs in browsers and on servers with Node.js."""
+
+        note1_path = Path(self.temp_dir) / "python.md"
+        note2_path = Path(self.temp_dir) / "javascript.md"
+
+        with open(note1_path, "w", encoding="utf-8") as f:
+            f.write(note1_content)
+        with open(note2_path, "w", encoding="utf-8") as f:
+            f.write(note2_content)
+
+        # Process both notes
+        processor = NoteProcessor()
+        all_documents = []
+
+        for note_path in [note1_path, note2_path]:
+            note = Note.from_file(str(note_path))
+            documents = list(processor.process_note(note))
+            all_documents.extend(documents)
+
+        # Store all documents
+        vectorstore = Chroma(
+            collection_name="obsidian_notes",
+            embedding_function=self.embedder,
+            persist_directory=str(self.db_path),
+        )
+
+        texts = [doc.content for doc in all_documents]
+        metadatas = [doc.metadata for doc in all_documents]
+        ids = [doc.id for doc in all_documents]
+
+        vectorstore.add_texts(texts=texts, metadatas=metadatas, ids=ids)
+
+        # Test similarity search
+        python_results = vectorstore.similarity_search("python programming", k=2)
+        self.assertGreater(len(python_results), 0)
+
+        # Verify results contain relevant content
+        python_content = " ".join([r.page_content.lower() for r in python_results])
+        self.assertIn("python", python_content)
+
+        # Test with different query
+        js_results = vectorstore.similarity_search("javascript web development", k=2)
+        self.assertGreater(len(js_results), 0)
+        js_content = " ".join([r.page_content.lower() for r in js_results])
+        self.assertIn("javascript", js_content)
+
+    def test_bulk_document_storage(self):
+        """Test storing multiple documents efficiently."""
+        if self.embedder is None:
+            self.skipTest("Embedding function not available")
+
+        # Create test note with multiple sections
+        note_content = """# Bulk Test Note
+This is a comprehensive test note.
+
+## Introduction
+Intro content for the bulk test.
+
+## Details
+Detail content with more information.
+
+## Conclusion
+Final thoughts and summary."""
+
+        note_path = Path(self.temp_dir) / "bulk_test.md"
+        with open(note_path, "w", encoding="utf-8") as f:
+            f.write(note_content)
+
+        # Process note to get actual documents
+        note = Note.from_file(str(note_path))
+        processor = NoteProcessor()
+        documents = list(processor.process_note(note))
+
+        # Create vector store
+        vectorstore = Chroma(
+            collection_name="obsidian_notes",
+            embedding_function=self.embedder,
+            persist_directory=str(self.db_path),
+        )
+
+        # Test bulk storage
+        texts = [doc.content for doc in documents]
+        metadatas = [doc.metadata for doc in documents]
+        ids = [doc.id for doc in documents]
+
+        self.assertEqual(len(texts), 4)  # Title + 3 sections
+        self.assertEqual(len(metadatas), 4)
+        self.assertEqual(len(ids), 4)
+
+        # Store all documents at once
+        vectorstore.add_texts(texts=texts, metadatas=metadatas, ids=ids)
+        self.assertEqual(vectorstore._collection.count(), 4)
+
+        # Verify metadata consistency
+        for metadata in metadatas:
+            self.assertIn("file_path", metadata)
+            self.assertIn("heading", metadata)
+            self.assertEqual(metadata["title"], "Bulk Test Note")
+
+    def test_document_retrieval_after_storage(self):
+        """Test retrieving documents after storing in vector store."""
+        if self.embedder is None:
+            self.skipTest("Embedding function not available")
+
+        # Create vector store
+        vectorstore = Chroma(
+            collection_name="obsidian_notes",
+            embedding_function=self.embedder,
+            persist_directory=str(self.db_path),
+        )
+
+        # Create test note and process it
+        note_content = """# RAG Architecture
+Key design decisions for the micro-agent.
+
+## Design Decisions
+This section contains important architectural choices.
+
+## Technical Details
+Implementation specifics for the RAG system."""
+
+        note_path = Path(self.temp_dir) / "architecture.md"
+        with open(note_path, "w", encoding="utf-8") as f:
+            f.write(note_content)
+
+        note = Note.from_file(str(note_path))
+        processor = NoteProcessor()
+        documents = list(processor.process_note(note))
+
+        # Store documents
+        texts = [doc.content for doc in documents]
+        metadatas = [doc.metadata for doc in documents]
+        ids = [doc.id for doc in documents]
+
+        vectorstore.add_texts(texts=texts, metadatas=metadatas, ids=ids)
+
+        # Test retrieval
+        results = vectorstore.similarity_search("architecture decisions", k=2)
+
+        self.assertGreater(len(results), 0)
+        for result in results:
+            self.assertIn("title", result.metadata)
+            self.assertIn("file_path", result.metadata)
 
     def test_metadata_types_compatibility(self):
         """Test metadata type compatibility with ChromaDB operations."""
-        # Test that all metadata fields work with ChromaDB's requirements
-        metadatas = [
-            {
-                'title': 'String Title',
-                'file_path': 'string/path.md',
-                'created_date': datetime.now().isoformat(),
-                'modified_date': datetime.now().isoformat(),
-                'heading': 'String Heading',
-                'level': 1,
-                'tags': ['python'],  # List of strings
-                'wikilinks': [['link1'], ['link2']]  # List of lists
-            }
-        ]
-        
+        # Create test note to validate actual metadata types
+        note_content = """# Type Test
+Testing metadata type compatibility.
+
+## Section 1
+Content with [[link1]] and [[link2]].
+
+## Section 2
+More content with #tag1 #tag2."""
+
+        note_path = Path(self.temp_dir) / "type_test.md"
+        with open(note_path, "w", encoding="utf-8") as f:
+            f.write(note_content)
+
+        # Process note to get actual metadata
+        note = Note.from_file(str(note_path))
+        processor = NoteProcessor()
+        documents = list(processor.process_note(note))
+
         # Verify all values are JSON-serializable
         import json
-        for metadata in metadatas:
+
+        for doc in documents:
             try:
-                json.dumps(metadata)
-            except (TypeError, ValueError):
-                self.fail(f"Metadata not JSON-serializable: {metadata}")
+                json.dumps(doc.metadata)
+                json.dumps(doc.content)
+                json.dumps(doc.id)
+            except (TypeError, ValueError) as e:
+                self.fail(f"Document not JSON-serializable: {e}")
+
+        # Test actual storage with ChromaDB (skip if no embedder)
+        if self.embedder is None:
+            return
+
+        vectorstore = Chroma(
+            collection_name="obsidian_notes",
+            embedding_function=self.embedder,
+            persist_directory=str(self.db_path),
+        )
+
+        texts = [doc.content for doc in documents]
+        metadatas = [doc.metadata for doc in documents]
+        ids = [doc.id for doc in documents]
+
+        # This should not raise any type errors
+        vectorstore.add_texts(texts=texts, metadatas=metadatas, ids=ids)
+        self.assertEqual(vectorstore._collection.count(), len(documents))
 
     def test_note_processing_pipeline_integration(self):
         """Test integration from Note to vector store storage."""
-        temp_dir = tempfile.mkdtemp()
-        
-        try:
-            # Create test note file
-            note_content = """# Integration Test
+        if self.embedder is None:
+            self.skipTest("Embedding function not available")
+
+        # Create test note file
+        note_content = """# Integration Test
 Testing the full pipeline from note to vector store.
 
 ## Technical Details
@@ -276,40 +423,38 @@ This section contains technical implementation details.
 
 ## Testing Approach
 The testing approach focuses on integration."""
-            
-            note_path = Path(temp_dir) / "integration.md"
-            with open(note_path, "w", encoding="utf-8") as f:
-                f.write(note_content)
-            
-            # Simulate note processing to documents
-            import document
-            documents = []
-            for i, section in enumerate(["Introduction", "Technical Details", "Testing Approach"]):
-                doc = {
-                    'id': f"integration_{i}",
-                    'content': f"Integration Test | {section}\n\nContent for {section.lower()}",
-                    'metadata': {
-                        'title': 'Integration Test',
-                        'file_path': str(note_path),
-                        'created_date': datetime.now().isoformat(),
-                        'modified_date': datetime.now().isoformat(),
-                        'heading': section,
-                        'level': 2,
-                        'tags': ['test', 'integration'],
-                        'wikilinks': []
-                    }
-                }
-                documents.append(doc)
-            
-            # Test document structure
-            self.assertEqual(len(documents), 3)
-            for doc in documents:
-                self.assertIn('metadata', doc)
-                self.assertIn('level', doc['metadata'])
-                
-        finally:
-            shutil.rmtree(temp_dir)
+
+        note_path = Path(self.temp_dir) / "integration.md"
+        with open(note_path, "w", encoding="utf-8") as f:
+            f.write(note_content)
+
+        # Process note using actual components
+        note = Note.from_file(str(note_path))
+        processor = NoteProcessor()
+        documents = list(processor.process_note(note))
+
+        # Create vector store and store documents
+        vectorstore = Chroma(
+            collection_name="obsidian_notes",
+            embedding_function=self.embedder,
+            persist_directory=str(self.db_path),
+        )
+
+        texts = [doc.content for doc in documents]
+        metadatas = [doc.metadata for doc in documents]
+        ids = [doc.id for doc in documents]
+
+        vectorstore.add_texts(texts=texts, metadatas=metadatas, ids=ids)
+
+        # Verify integration
+        self.assertEqual(len(documents), 3)  # Title + 2 sections
+        self.assertEqual(vectorstore._collection.count(), 3)
+
+        # Test retrieval
+        results = vectorstore.similarity_search("integration testing", k=2)
+        self.assertGreater(len(results), 0)
 
 
 if __name__ == "__main__":
     unittest.main()
+
