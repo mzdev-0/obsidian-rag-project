@@ -1,5 +1,8 @@
 # RAG Micro-Agent MVP Development Checklist
 
+- [ ] Add batch processing for large vaults
+- [ ] Add progress reports during indexing
+
 ## Current State Analysis
 - ✅ **Core Architecture**: Multi-stage planner-led retrieval system designed
 - ✅ **Data Models**: Note parsing, content sections, metadata extraction complete
