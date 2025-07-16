@@ -6,13 +6,12 @@ into the vector store, including scanning, processing, and storage.
 """
 
 from .scanner import VaultScanner, ScanOptions
-from .processor import NoteProcessor, ProcessedDocument
+from .processor import NoteProcessor
 from .vector_manager import VectorStoreManager
 
 __all__ = [
     'VaultScanner',
     'ScanOptions', 
     'NoteProcessor',
-    'ProcessedDocument',
     'VectorStoreManager'
 ]
