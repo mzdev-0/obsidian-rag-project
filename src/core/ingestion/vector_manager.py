@@ -5,7 +5,7 @@ Handles document storage in ChromaDB using the existing LangChain integration,
 providing a bridge between processed documents and the vector store.
 """
 
-from typing import List, Optional
+from typing import List, Optional, Tuple
 import logging
 from pathlib import Path
 
@@ -166,20 +166,79 @@ class VectorStoreManager:
             logger.error(f"Failed to remove documents by path {file_path}: {e}")
             return 0
 
-    def search_documents(self, query: str, k: int = 5) -> List[Document]:
+    def search_documents(self, query: str, k: int = 5, filter_dict: Optional[dict] = None) -> List[Document]:
         """
         Search documents by semantic similarity.
 
         Args:
             query: Search query text
             k: Number of results to return
+            filter_dict: Optional metadata filters
 
         Returns:
             List of matching Document objects
         """
         try:
-            return self.vectorstore.similarity_search(query, k=k)
+            return self.vectorstore.similarity_search(query, k=k, filter=filter_dict)
         except Exception as e:
             logger.error(f"Search failed: {e}")
             return []
+
+    def search_documents_with_scores(self, query: str, k: int = 5, filter_dict: Optional[dict] = None) -> List[Tuple[Document, float]]:
+        """
+        Search documents by semantic similarity with relevance scores.
+
+        Args:
+            query: Search query text
+            k: Number of results to return
+            filter_dict: Optional metadata filters
+
+        Returns:
+            List of (Document, score) tuples
+        """
+        try:
+            return self.vectorstore.similarity_search_with_score(query, k=k, filter=filter_dict)
+        except Exception as e:
+            logger.error(f"Search with scores failed: {e}")
+            return []
+
+    def get_documents_by_metadata(self, filter_dict: dict, limit: int = 100) -> List[Document]:
+        """
+        Get documents by metadata filtering (no semantic search).
+
+        Args:
+            filter_dict: ChromaDB-compatible filter
+            limit: Maximum number of documents to return
+
+        Returns:
+            List of matching Document objects
+        """
+        try:
+            results = self.vectorstore._collection.get(
+                where=filter_dict,
+                limit=limit,
+                include=["documents", "metadatas"]
+            )
+            
+            documents = []
+            for i, doc_id in enumerate(results.get("ids", [])):
+                if i < len(results.get("documents", [])) and i < len(results.get("metadatas", [])):
+                    doc = Document(
+                        page_content=results["documents"][i],
+                        metadata=results["metadatas"][i]
+                    )
+                    documents.append(doc)
+            
+            return documents
+        except Exception as e:
+            logger.error(f"Metadata search failed: {e}")
+            return []
+
+    def get_collection_count(self) -> int:
+        """Get the total number of documents in the collection."""
+        try:
+            return self.vectorstore._collection.count()
+        except Exception as e:
+            logger.error(f"Failed to get collection count: {e}")
+            return 0
 
