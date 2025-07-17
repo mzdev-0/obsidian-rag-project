@@ -8,7 +8,7 @@
 - ✅ **Collection**: "obsidian_notes" with optimized schema
 - ✅ **Indexing**: All payload fields indexed for optimal filtering
 - ✅ **Hybrid Search**: Semantic + metadata filtering in single query
-- ✅ **Native Deduplication**: group_by file_path eliminates redundancy
+- ✅ **Native Deduplication**: Qdrant native deduplication (group_by parameter review needed - may be legacy from ChromaDB implementation)
 
 ### ✅ **Query System Overhaul**
 - ✅ **Query Planner**: Updated JSON schema for Qdrant filtering syntax
@@ -94,6 +94,11 @@ OPENROUTER_API_KEY=      # LLM for query planning
 QDRANT_URL=http://localhost:6333
 MODEL_PATH=./data/models/Qwen3-Embedding-0.6B-f16.gguf
 ```
+
+## 📋 **TODO: Review Legacy Parameters**
+- [ ] **Review group_by parameter**: Investigate if group_by parameter is legacy from ChromaDB implementation and can be removed from codebase
+- [ ] **Verify deduplication**: Confirm Qdrant native deduplication works without explicit group_by parameter
+- [ ] Re-implement search by metadata only. 
 
 **Docker Compose (optional):**
 ```yaml
