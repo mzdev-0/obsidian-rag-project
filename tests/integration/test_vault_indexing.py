@@ -24,7 +24,7 @@ class TestVaultIndexing(unittest.TestCase):
     def setUp(self):
         """Set up test environment."""
         self.temp_dir = tempfile.mkdtemp()
-        self.db_path = Path(self.temp_dir) / "chroma_db"
+        self.db_path = Path(self.temp_dir) / "qdrant_db"
         self.vault_path = Path(self.temp_dir) / "vault"
         self.vault_path.mkdir(exist_ok=True)
 
