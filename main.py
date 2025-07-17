@@ -41,7 +41,53 @@ def main():
 
 def index_vault(vault_path: str):
     """Index a vault directory."""
-    pass
+    try:
+        print(f"Indexing {vault_path}...")
+        
+        # Initialize configuration and vector store
+        config = LLMConfig.from_env()
+        vector_manager = VectorStoreManager(config)
+        
+        # Scan for markdown files
+        scanner = VaultScanner(ScanOptions())
+        md_files = list(scanner.scan_files(vault_path))
+        
+        if not md_files:
+            print("❌ No markdown files found")
+            return
+            
+        print(f"Found {len(md_files)} markdown files")
+        
+        # Process files to documents
+        processor = NoteProcessor()
+        all_documents = []
+        all_doc_ids = []
+        
+        for i, file_path in enumerate(md_files, 1):
+            try:
+                documents = list(processor.process_file(str(file_path)))
+                doc_ids = [doc.metadata["id"] for doc in documents]
+                
+                all_documents.extend(documents)
+                all_doc_ids.extend(doc_ids)
+                
+                print(f"Processed {i}/{len(md_files)}: {file_path.name} ({len(documents)} documents)")
+                
+            except Exception as e:
+                print(f"⚠️  Skipping {file_path.name}: {e}")
+        
+        if not all_documents:
+            print("❌ No documents could be processed")
+            return
+            
+        # Store in vector store
+        vector_manager.store_documents(all_documents, all_doc_ids)
+        
+        print(f"✅ Complete - Indexed {len(all_documents)} documents from {len(md_files)} files")
+        
+    except Exception as e:
+        print(f"❌ Error indexing vault: {e}")
+        sys.exit(1)
 
 
 def run_query(query: str):
