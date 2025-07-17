@@ -32,9 +32,11 @@ class LLMConfig:
     embedding_model_path: Optional[str] = None
     use_local_embeddings: bool = True
     
-    # ChromaDB configuration
-    db_path: str = "./data/chroma_db"
-    collection_name: str = "obsidian_notes"
+    # Qdrant configuration
+    qdrant_url: str = "http://localhost:6333"
+    qdrant_api_key: Optional[str] = None
+    qdrant_collection_name: str = "obsidian_notes"
+    qdrant_vector_size: int = 384
     
     @classmethod
     def from_env(cls) -> "LLMConfig":
@@ -56,12 +58,14 @@ class LLMConfig:
         config.use_local_embeddings = os.getenv("USE_LOCAL_EMBEDDINGS", "true").lower() != "false"
         
         # Database settings
-        config.db_path = os.getenv("CHROMA_DB_PATH", "./data/chroma_db")
-        config.collection_name = os.getenv("CHROMA_COLLECTION_NAME", "obsidian_notes")
+        config.qdrant_url = os.getenv("QDRANT_URL", "http://localhost:6333")
+        config.qdrant_api_key = os.getenv("QDRANT_API_KEY")
+        config.qdrant_collection_name = os.getenv("QDRANT_COLLECTION_NAME", "obsidian_notes")
+        config.qdrant_vector_size = int(os.getenv("QDRANT_VECTOR_SIZE", "384"))
         
         logger.info(f"Loaded config: use_online_llm={config.use_online_llm}, "
                    f"embedding_model={config.embedding_model_path or 'default'}, "
-                   f"db_path={config.db_path}")
+                   f"qdrant_url={config.qdrant_url}")
         
         return config
 
