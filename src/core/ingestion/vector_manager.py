@@ -96,7 +96,7 @@ class VectorStoreManager:
             except Exception as e:
                 logger.debug(f"Index for {field_name} may already exist: {e}")
 
-    def store_document(self, content: str, metadata: dict, doc_id: str) -> None:
+    def store_document(self, content: str, metadata: dict) -> None:
         """
         Store a single document with metadata.
 
@@ -108,6 +108,7 @@ class VectorStoreManager:
         try:
             doc = Document(page_content=content, metadata=metadata)
 
+            doc_id = metadata["id"]
             self.vectorstore.add_documents([doc], ids=[doc_id])
             logger.debug(f"Stored document {doc_id}")
 
