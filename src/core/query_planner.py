@@ -25,7 +25,7 @@ client = OpenAI(
 
 # --- Prompt & Schema ---
 QUERY_PLANNER_PROMPT = """
-You are a meticulous and intelligent query planner for a personal knowledge management system. Your purpose is to convert a user's natural language question into a precise, structured JSON object that can be executed against a ChromaDB vector store.
+You are a meticulous and intelligent query planner for a personal knowledge management system. Your purpose is to convert a user's natural language question into a precise, structured JSON object that can be executed against a Qdrant vector store.
 
 Your sole output **MUST** be a single, raw JSON object conforming to the provided schema. Do not include any other text, explanations, or markdown formatting.
 
@@ -34,21 +34,21 @@ Your sole output **MUST** be a single, raw JSON object conforming to the provide
 
 **# Core Task**
 Deconstruct the user's query into three main components:
-1.  **`semantic_search_needed`**: A boolean (`true` or `false`) indicating if the query requires a vector search (`query`) or can be satisfied by a metadata-only lookup (`get`).
+1.  **`semantic_search_needed`**: A boolean (`true` or `false`) indicating if the query requires a vector search or can be satisfied by a metadata-only lookup.
 2.  **`semantic_query`**: A rephrased version of the query, optimized for semantic vector search. This can be an empty string if `semantic_search_needed` is `false`.
-3.  **`filters`**: A list of metadata filters to be applied as a `where` clause in ChromaDB.
+3.  **`filters`**: A list of metadata filters to be applied as a Qdrant Filter object.
 
-**# Semantic (`query`) vs. Metadata (`get`) Search**
+**# Semantic vs. Metadata Search**
 You must decide if the user's query requires understanding the *meaning* of the text, or if it's just asking for items that match specific, exact metadata.
 
-- Set `semantic_search_needed: true` if the query involves concepts, topics, or summarization (e.g., "notes about X", "what did I say about Y"). These queries use ChromaDB's `query()` method. The `semantic_query` should be rich and descriptive.
-- Set `semantic_search_needed: false` if the query can be answered *entirely* with the available filter fields (e.g., "all notes with tag 'project-alpha'", "files from last week"). These queries use ChromaDB's `get()` method. The `semantic_query` can be left as an empty string `""`.
+- Set `semantic_search_needed: true` if the query involves concepts, topics, or summarization (e.g., "notes about X", "what did I say about Y"). The `semantic_query` should be rich and descriptive.
+- Set `semantic_search_needed: false` if the query can be answered *entirely* with the available filter fields (e.g., "all notes with tag 'project-alpha'", "files from last week"). The `semantic_query` can be left as an empty string `""`.
 
 **# Available Filter Fields**
-- `created_date`, `modified_date`: ISO 8601 datetime string (e.g., "2024-07-13T12:00:00"). Use with `$gte` (greater than or equal) and `$lte` (less than or equal).
-- `tags`, `wikilinks`: String lists. Use the `$in` operator for matching one or more items.
-- `file_path`, `heading`, `title`: String. Use `$eq` for exact matches.
-- `level`: Integer (1-6). Use `$eq`, `$lte`, etc. to filter by heading depth.
+- `created_date`, `modified_date`: Unix timestamps (integers). Use with `gte` (greater than or equal) and `lte` (less than or equal).
+- `tags`, `wikilinks`: String arrays. Use `match` for exact array matches or `contains` for partial matches.
+- `file_path`, `heading`, `title`: String. Use `eq` for exact matches or `like` for partial matches.
+- `level`: Integer (1-6). Use `eq`, `lte`, etc. to filter by heading depth.
 
 **# Response Format**
 Based on the user's intent, decide on the appropriate response format:
@@ -71,8 +71,8 @@ Based on the user's intent, decide on the appropriate response format:
       "filters": [
         {{
           "field": "created_date",
-          "operator": "$gte",
-          "value": "2024-06-13T00:00:00"
+          "operator": "gte",
+          "value": 1720924800
         }}
       ],
       "response_format": "selective_context"
@@ -82,7 +82,7 @@ Based on the user's intent, decide on the appropriate response format:
 2.  **User Query**: "Show me all files tagged 'project-hydra' that are level 2 headings."
     **Your Reasoning (Internal Monologue)**:
     - The user is asking for a list based on very specific metadata. "tag is 'project-hydra'" and "level 2 headings" are both exact filters.
-    - There is no conceptual or "aboutness" search here. This is a perfect case for a metadata-only `get`.
+    - There is no conceptual or "aboutness" search here. This is a perfect case for a metadata-only lookup.
     - Therefore, `semantic_search_needed` is `false`, and the `semantic_query` can be empty.
     - The user wants a list of files, so `metadata_only` is the right response format.
     **Your JSON Output**:
@@ -93,12 +93,12 @@ Based on the user's intent, decide on the appropriate response format:
       "filters": [
         {{
           "field": "tags",
-          "operator": "$in",
-          "value": ["project-hydra"]
+          "operator": "contains",
+          "value": "project-hydra"
         }},
         {{
           "field": "level",
-          "operator": "$eq",
+          "operator": "eq",
           "value": 2
         }}
       ],
@@ -112,15 +112,15 @@ Based on the user's intent, decide on the appropriate response format:
 **# Your JSON Output**
 """
 
-# Updated schema that allows empty semantic_query and uses ChromaDB-appropriate operators
+# Updated schema for Qdrant-native filtering
 SCHEMA_OBJECT = {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "title": "Query Plan",
-    "description": "A structured query plan deconstructed from a user's natural language query for ChromaDB.",
+    "description": "A structured query plan deconstructed from a user's natural language query for Qdrant.",
     "type": "object",
     "properties": {
         "semantic_search_needed": {
-            "description": "Determines if the query requires a semantic vector search (`query`) or can be fulfilled with a direct metadata lookup (`get`).",
+            "description": "Determines if the query requires a semantic vector search or can be fulfilled with a metadata-only lookup.",
             "type": "boolean",
         },
         "semantic_query": {
@@ -148,12 +148,12 @@ SCHEMA_OBJECT = {
                         ],
                     },
                     "operator": {
-                        "description": "The operator to use for the filter, following ChromaDB syntax.",
+                        "description": "The operator to use for the filter, following Qdrant syntax.",
                         "type": "string",
-                        "enum": ["$gt", "$gte", "$lt", "$lte", "$eq", "$ne", "$in"],
+                        "enum": ["gt", "gte", "lt", "lte", "eq", "ne", "match", "contains", "like"],
                     },
                     "value": {
-                        "description": "The value to filter against. Can be string, int, or list for '$in'.",
+                        "description": "The value to filter against. Can be string, int, or array.",
                         "anyOf": [
                             {"type": "string"},
                             {"type": "integer"},
