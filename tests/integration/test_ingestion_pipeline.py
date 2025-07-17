@@ -2,7 +2,7 @@
 Integration tests for the complete note ingestion pipeline.
 
 These tests validate the end-to-end workflow from markdown files to
-embedded documents in ChromaDB, using the new RAGMicroAgent architecture.
+embedded documents in Qdrant, using the new RAGMicroAgent architecture.
 """
 
 import unittest
@@ -25,7 +25,7 @@ class TestFullIngestionPipeline(unittest.TestCase):
     def setUp(self):
         """Set up test environment."""
         self.temp_dir = tempfile.mkdtemp()
-        self.db_path = Path(self.temp_dir) / "chroma_db"
+        self.db_path = Path(self.temp_dir) / "qdrant_db"
         self.vault_path = Path(self.temp_dir) / "vault"
         self.vault_path.mkdir(exist_ok=True)
 
@@ -206,7 +206,7 @@ class TestCLIIntegration(unittest.TestCase):
         self.temp_dir = tempfile.mkdtemp()
         self.default_args = lambda: None  # Mock args
         self.default_args.vault_dir = Path(self.temp_dir) / "vault"
-        self.default_args.db_path = Path(self.temp_dir) / "chroma_db"
+        self.default_args.db_path = Path(self.temp_dir) / "qdrant_db"
 
     def tearDown(self):
         """Clean up CLI test environment."""
