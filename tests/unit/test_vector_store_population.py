@@ -1,7 +1,7 @@
 """
 Tests for vector store population functionality.
 
-Tests the integration with existing ChromaDB setup via LangChain,
+Tests the integration with Qdrant setup via LangChain,
 based on the architecture defined in technical specification.
 """
 
@@ -11,7 +11,7 @@ import shutil
 from pathlib import Path
 from datetime import datetime
 
-from langchain_community.vectorstores import Chroma
+from langchain_qdrant import Qdrant
 from src.core.ingestion.vector_manager import get_embedder
 from src.core.note import Note
 from src.core.ingestion.processor import NoteProcessor
@@ -23,7 +23,7 @@ class TestVectorStorePopulation(unittest.TestCase):
     def setUp(self):
         """Set up tests."""
         self.temp_dir = tempfile.mkdtemp()
-        self.db_path = Path(self.temp_dir) / "chroma_db"
+        self.db_path = Path(self.temp_dir) / "qdrant_db"
         self.embedder = get_embedder()
 
     def tearDown(self):
@@ -33,8 +33,8 @@ class TestVectorStorePopulation(unittest.TestCase):
         if Path(self.temp_dir).exists():
             shutil.rmtree(self.temp_dir)
 
-    def test_chroma_document_format(self):
-        """Test document format matches ChromaDB requirements."""
+    def test_qdrant_document_format(self):
+        """Test document format matches Qdrant requirements."""
         # Create a test note file
         note_content = """# Test Title
 This is test content with some [[wikilinks]] and #test tags.
@@ -52,23 +52,20 @@ More content here."""
         documents = list(processor.process_note(note))
 
         # Create vector store
-        vectorstore = Chroma(
+        vectorstore = Qdrant.from_texts(
+            texts=[doc.content for doc in documents],
+            embedding=self.embedder,
+            location=str(self.db_path),
             collection_name="obsidian_notes",
-            embedding_function=self.embedder,
-            persist_directory=str(self.db_path),
+            metadatas=[doc.metadata for doc in documents],
+            ids=[doc.id for doc in documents]
         )
 
         # Test basic storage
-        texts = [doc.content for doc in documents]
-        metadatas = [doc.metadata for doc in documents]
-        ids = [doc.id for doc in documents]
-
-        # Test actual storage
-        vectorstore.add_texts(texts=texts, metadatas=metadatas, ids=ids)
-        self.assertEqual(vectorstore._collection.count(), len(documents))
+        self.assertEqual(len(documents), len(vectorstore.similarity_search("test", k=100)))
 
     def test_metadata_schema_validation(self):
-        """Test metadata field validation for ChromaDB storage."""
+        """Test metadata field validation for Qdrant storage."""
         # Create test note to validate actual metadata structure
         note_content = """ Tags: [[Temp_tag]]
 
@@ -104,15 +101,13 @@ Content for the main section."""
             for field in required_metadata:
                 self.assertIn(field, metadata)
 
-            # Verify datetime fields are strings
-            self.assertIsInstance(metadata["created_date"], str)
-            self.assertIsInstance(metadata["modified_date"], str)
+            # Verify datetime fields are integers (Unix timestamps for Qdrant)
+            self.assertIsInstance(metadata["created_date"], int)
+            self.assertIsInstance(metadata["modified_date"], int)
 
-            # Verify data types
-            # self.assertIsInstance(metadata["tags"], list) #Note: I don't think we need this. Maybe dont need separate tags & wikilink_tags at all
-            self.assertIsInstance(
-                metadata["wikilinks"], str
-            )  # TODO: This test was failing, but its cuz the assertion is bad. It correctly returns all wikilinks, but bc the test is a loop, it returns them individually instead of the list. Changed to assert for string in meantime.
+            # Verify data types for Qdrant
+            self.assertIsInstance(metadata["tags"], list)
+            self.assertIsInstance(metadata["wikilinks"], list)
             self.assertIsInstance(metadata["level"], int)
             self.assertTrue(1 <= metadata["level"] <= 6)
 
@@ -153,14 +148,14 @@ Second section content."""
             ids = [d.id for d in documents]
             self.assertEqual(len(ids), len(set(ids)))
 
-    def test_chromadb_persistence(self):
-        """Test that ChromaDB properly persists data between sessions."""
+    def test_qdrant_persistence(self):
+        """Test that Qdrant properly persists data between sessions."""
         if self.embedder is None:
             self.skipTest("Embedding function not available")
 
         # Create test note
         note_content = """# Persistence Test
-Testing ChromaDB persistence.
+Testing Qdrant persistence.
 
 ## Data Section
 This data should persist across sessions."""
@@ -175,28 +170,27 @@ This data should persist across sessions."""
         documents = list(processor.process_note(note))
 
         # First session - store data
-        vectorstore1 = Chroma(
+        vectorstore1 = Qdrant.from_texts(
+            texts=[doc.content for doc in documents],
+            embedding=self.embedder,
+            location=str(self.db_path),
             collection_name="obsidian_notes",
-            embedding_function=self.embedder,
-            persist_directory=str(self.db_path),
+            metadatas=[doc.metadata for doc in documents],
+            ids=[doc.id for doc in documents]
         )
 
-        texts = [doc.content for doc in documents]
-        metadatas = [doc.metadata for doc in documents]
-        ids = [doc.id for doc in documents]
-
-        vectorstore1.add_texts(texts=texts, metadatas=metadatas, ids=ids)
-        initial_count = vectorstore1._collection.count()
+        initial_count = len(vectorstore1.similarity_search("persistence", k=100))
         self.assertGreater(initial_count, 0)
 
         # Second session - verify persistence
-        vectorstore2 = Chroma(
-            collection_name="obsidian_notes",
+        vectorstore2 = Qdrant(
             embedding_function=self.embedder,
-            persist_directory=str(self.db_path),
+            location=str(self.db_path),
+            collection_name="obsidian_notes",
         )
 
-        self.assertEqual(vectorstore2._collection.count(), initial_count)
+        persisted_count = len(vectorstore2.similarity_search("persistence", k=100))
+        self.assertEqual(persisted_count, initial_count)
 
         # Test retrieval from persisted data
         results = vectorstore2.similarity_search("persistence", k=1)
@@ -239,17 +233,14 @@ JavaScript runs in browsers and on servers with Node.js."""
             all_documents.extend(documents)
 
         # Store all documents
-        vectorstore = Chroma(
+        vectorstore = Qdrant.from_texts(
+            texts=[doc.content for doc in all_documents],
+            embedding=self.embedder,
+            location=str(self.db_path),
             collection_name="obsidian_notes",
-            embedding_function=self.embedder,
-            persist_directory=str(self.db_path),
+            metadatas=[doc.metadata for doc in all_documents],
+            ids=[doc.id for doc in all_documents]
         )
-
-        texts = [doc.content for doc in all_documents]
-        metadatas = [doc.metadata for doc in all_documents]
-        ids = [doc.id for doc in all_documents]
-
-        vectorstore.add_texts(texts=texts, metadatas=metadatas, ids=ids)
 
         # Test similarity search
         python_results = vectorstore.similarity_search("python programming", k=1)
@@ -293,10 +284,13 @@ Final thoughts and summary."""
         documents = list(processor.process_note(note))
 
         # Create vector store
-        vectorstore = Chroma(
+        vectorstore = Qdrant.from_texts(
+            texts=[doc.content for doc in documents],
+            embedding=self.embedder,
+            location=str(self.db_path),
             collection_name="obsidian_notes",
-            embedding_function=self.embedder,
-            persist_directory=str(self.db_path),
+            metadatas=[doc.metadata for doc in documents],
+            ids=[doc.id for doc in documents]
         )
 
         # Test bulk storage
@@ -308,9 +302,9 @@ Final thoughts and summary."""
         self.assertEqual(len(metadatas), 4)
         self.assertEqual(len(ids), 4)
 
-        # Store all documents at once
-        vectorstore.add_texts(texts=texts, metadatas=metadatas, ids=ids)
-        self.assertEqual(vectorstore._collection.count(), 4)
+        # Verify storage via retrieval
+        stored_count = len(vectorstore.similarity_search("test", k=100))
+        self.assertEqual(stored_count, 4)
 
         # Verify metadata consistency
         for metadata in metadatas:
@@ -324,10 +318,11 @@ Final thoughts and summary."""
             self.skipTest("Embedding function not available")
 
         # Create vector store
-        vectorstore = Chroma(
-            collection_name="obsidian_notes",
-            embedding_function=self.embedder,
-            persist_directory=str(self.db_path),
+        vectorstore = Qdrant.from_texts(
+            texts=["placeholder"],
+            embedding=self.embedder,
+            location=str(self.db_path),
+            collection_name="obsidian_notes"
         )
 
         # Create test note and process it
@@ -364,7 +359,7 @@ Implementation specifics for the RAG system."""
             self.assertIn("file_path", result.metadata)
 
     def test_metadata_types_compatibility(self):
-        """Test metadata type compatibility with ChromaDB operations."""
+        """Test metadata type compatibility with Qdrant operations."""
         # Create test note to validate actual metadata types
         note_content = """# Type Test
 Testing metadata type compatibility.
@@ -395,23 +390,22 @@ More content with #tag1 #tag2."""
             except (TypeError, ValueError) as e:
                 self.fail(f"Document not JSON-serializable: {e}")
 
-        # Test actual storage with ChromaDB (skip if no embedder)
+        # Test actual storage with Qdrant (skip if no embedder)
         if self.embedder is None:
             return
 
-        vectorstore = Chroma(
+        vectorstore = Qdrant.from_texts(
+            texts=[doc.content for doc in documents],
+            embedding=self.embedder,
+            location=str(self.db_path),
             collection_name="obsidian_notes",
-            embedding_function=self.embedder,
-            persist_directory=str(self.db_path),
+            metadatas=[doc.metadata for doc in documents],
+            ids=[doc.id for doc in documents]
         )
 
-        texts = [doc.content for doc in documents]
-        metadatas = [doc.metadata for doc in documents]
-        ids = [doc.id for doc in documents]
-
         # This should not raise any type errors
-        vectorstore.add_texts(texts=texts, metadatas=metadatas, ids=ids)
-        self.assertEqual(vectorstore._collection.count(), len(documents))
+        stored_count = len(vectorstore.similarity_search("test", k=100))
+        self.assertEqual(stored_count, len(documents))
 
     def test_note_processing_pipeline_integration(self):
         """Test integration from Note to vector store storage."""
@@ -438,21 +432,19 @@ The testing approach focuses on integration."""
         documents = list(processor.process_note(note))
 
         # Create vector store and store documents
-        vectorstore = Chroma(
+        vectorstore = Qdrant.from_texts(
+            texts=[doc.content for doc in documents],
+            embedding=self.embedder,
+            location=str(self.db_path),
             collection_name="obsidian_notes",
-            embedding_function=self.embedder,
-            persist_directory=str(self.db_path),
+            metadatas=[doc.metadata for doc in documents],
+            ids=[doc.id for doc in documents]
         )
-
-        texts = [doc.content for doc in documents]
-        metadatas = [doc.metadata for doc in documents]
-        ids = [doc.id for doc in documents]
-
-        vectorstore.add_texts(texts=texts, metadatas=metadatas, ids=ids)
 
         # Verify integration
         self.assertEqual(len(documents), 3)  # Title + 2 sections
-        self.assertEqual(vectorstore._collection.count(), 3)
+        stored_count = len(vectorstore.similarity_search("test", k=100))
+        self.assertEqual(stored_count, 3)
 
         # Test retrieval
         results = vectorstore.similarity_search("integration testing", k=2)
