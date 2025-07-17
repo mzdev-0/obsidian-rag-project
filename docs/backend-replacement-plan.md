@@ -2,89 +2,76 @@
 
 Based on the migration-plan.md and supporting documentation, here's the thorough technical implementation plan:
 
-## Phase 1: Foundational Shift — Environment & Configuration
+## Phase 1: Foundational Shift — Environment & Configuration ✅ **COMPLETED**
 
 ### Dependency Transition
-- **Remove**: chromadb>=1.0.15
-- **Add**: qdrant-client>=1.9.0, langchain-qdrant>=0.1.0
-- **Configuration Update**: Replace CHROMA_DB_PATH with QDRANT_URL, QDRANT_API_KEY, QDRANT_COLLECTION_NAME
+- **Remove**: chromadb>=1.0.15 ✅ **COMPLETED**
+- **Add**: qdrant-client>=1.9.0, langchain-qdrant>=0.1.0 ✅ **COMPLETED**
+- **Configuration Update**: Replace CHROMA_DB_PATH with QDRANT_URL, QDRANT_API_KEY, QDRANT_COLLECTION_NAME ✅ **COMPLETED**
 
 ### Configuration Modernization
-- **Network-based**: Move from file-path (./data/chroma_db) to client-server (http://localhost:6333)
-- **Connection Parameters**: QDRANT_URL, API keys for cloud deployment
-- **Validation**: Ensure reliable Qdrant connection on startup
+- **Network-based**: Move from file-path (./data/chroma_db) to client-server (http://localhost:6333) ✅ **COMPLETED**
+- **Connection Parameters**: QDRANT_URL, API keys for cloud deployment ✅ **COMPLETED**
+- **Validation**: Ensure reliable Qdrant connection on startup ✅ **COMPLETED**
 
-## Phase 2: Re-architecting Data Handling — Ingestion & Storage
+## Phase 2: Re-architecting Data Handling — Drop-in Qdrant Migration
 
-### Robust Indexing Strategy
-**Create payload indexes on all key metadata fields:**
-- `title` - keyword index for exact title matching
-- `file_path` - keyword index for file-specific queries  
-- `created_date` - integer index for temporal range queries
-- `modified_date` - integer index for last-modified queries
-- `tags` - keyword array index for multi-tag filtering
-- `wikilinks` - keyword array index for relationship queries
-- `heading` - text field for heading-level filtering
-- `level` - integer index for section depth queries
-- `section_id` - keyword index for unique section identification
+### VectorStoreManager Refactoring
+**Modify existing src/core/ingestion/vector_manager.py:**
+- **Replace**: Chroma() with QdrantVectorStore.from_existing_collection()
+- **Add**: Qdrant payload indexing during initialization
+- **Keep**: Same class name, method signatures, and interface
+- **Update**: Collection creation with VectorParams for Qdrant
 
-### Data Processing Pipeline Refinement
-**Update Document metadata schema for Qdrant compatibility:**
-- Maintain Note → ContentSection → Document pipeline
-- Align Document.metadata with Qdrant payload schema
-- Ensure immediate indexing of all metadata fields upon ingestion
-- Support array fields (tags, wikilinks) natively in Qdrant
+### Metadata Schema Updates
+**Modify src/core/ingestion/processor.py:**
+- **Update**: Document.metadata to use arrays for tags/wikilinks (Qdrant native)
+- **Change**: created_date/modified_date to Unix timestamps (integers)
+- **Add**: section_id field for unique identification
+- **Maintain**: Same NoteProcessor class and process_note() interface
 
-## Phase 3: Enhancing Retrieval Intelligence — The Query Engine
+### Payload Indexing Implementation
+**Add to VectorStoreManager.__init__():**
+- Create payload indexes on: title, file_path, created_date, modified_date, tags, wikilinks, heading, level, section_id
+- Use Qdrant's create_payload_index() for each field
+- Configure appropriate index types (keyword, integer, keyword array)
 
-### Evolve the Query Planner
-**Revise LLM prompt to generate Qdrant-native query plans:**
-- **Filter Structure**: Replace ChromaDB where clauses with Qdrant Filter objects
-- **Temporal Parsing**: Convert "last week", "this month" to Unix timestamp ranges
-- **Complex Filtering**: Support AND/OR conditions on tags, wikilinks, temporal ranges
-- **Qdrant Syntax**: Teach planner Qdrant's must/should/range filter structure
+### Data Pipeline Refinement
+**Update processor.py _section_to_document():**
+- **Change**: tags from comma-separated string to list[str]
+- **Change**: wikilinks from comma-separated string to list[str]
+- **Change**: created_date/modified_date to int (Unix timestamps)
+- **Add**: section_id field for deduplication support
 
-**New query plan format:**
-```json
-{
-  "semantic_search_needed": bool,
-  "semantic_query": string,
-  "qdrant_filter": {
-    "must": [...],
-    "should": [...],
-    "must_not": [...]
-  },
-  "response_format": "metadata_only" | "selective_context",
-  "search_params": {
-    "k": int,
-    "score_threshold": float,
-    "group_by": "file_path"
-  }
-}
-```
+## Phase 3: Enhancing Retrieval Intelligence — Query Engine Refactoring
 
-### Delegate Complexity to Database Engine
+### Retriever.py Refactoring
+**Modify existing src/core/retriever.py:**
+- **Replace**: _build_where_filter() with _build_qdrant_filter()
+- **Update**: retrieve_context() to use QdrantVectorStore.similarity_search() with Filter objects
+- **Remove**: _deduplicate_query_sections() function entirely
+- **Add**: Qdrant's group_by="file_path" parameter to search calls
 
-#### 1. True Hybrid Search Implementation
-**Replace current multi-step process:**
-- **Before**: Semantic search → Python filtering → Deduplication
-- **After**: Single atomic Qdrant query combining vector similarity + payload filters
+### Query Planner Evolution
+**Modify src/core/query_planner.py:**
+- **Update**: deconstruct_query() prompt to generate Qdrant Filter objects
+- **Change**: JSON schema from ChromaDB where clauses to Qdrant filter structure
+- **Add**: Unix timestamp conversion for temporal queries
+- **Maintain**: Same function signature and return format
 
+### True Hybrid Search Implementation
+**Modify retrieve_context():**
+- **Replace**: Two-step "search then filter" with single atomic Qdrant query
+- **Use**: QdrantVectorStore.similarity_search() with pre-filtered metadata
+- **Add**: group_by="file_path" for native deduplication
+- **Remove**: All Python-based post-processing and deduplication
+
+### Native Deduplication
 **Technical changes:**
-- Pass semantic vector and metadata filters in single API call
-- Qdrant performs pre-filtered vector search
-- Eliminate Python post-processing overhead
-
-#### 2. Native Deduplication
-**Remove Python-based deduplication:**
 - **Delete**: _deduplicate_query_sections() function
-- **Replace**: Qdrant's group_by="file_path" during search
-- **Result**: Single most relevant section per file, directly from database
-
-**Implementation:**
-- Use group_by parameter in Qdrant search
-- Set group_size=1 for single result per file
-- Eliminate redundant parent/child section handling
+- **Replace**: Python deduplication with Qdrant's group_by parameter
+- **Configure**: group_size=1 for single result per file
+- **Result**: Direct database-level deduplication
 
 ## Phase 4: Validation & Verification
 
@@ -119,11 +106,12 @@ Execute all 9 target queries from product-requirements.md:
 
 ## Technical Implementation Sequence
 
-1. **Configuration Layer**: Update config.py for Qdrant parameters
-2. **Vector Store**: Replace VectorStoreManager with QdrantManager
-3. **Query Planner**: Update prompt and JSON schema for Qdrant filters
-4. **Retriever**: Replace retriever.py with Qdrant-native implementation
-5. **Testing**: Update test suite for Qdrant backend
-6. **Validation**: Execute target queries and measure improvement
+1. **Configuration Layer**: ✅ **COMPLETED** - config.py updated for Qdrant parameters
+2. **Vector Store**: Modify VectorStoreManager to use QdrantVectorStore backend
+3. **Query Planner**: Update query_planner.py prompt for Qdrant filter generation
+4. **Retriever**: Refactor retriever.py for Qdrant-native filtering and deduplication
+5. **Processor**: Update processor.py metadata schema for Qdrant payload compatibility
+6. **Testing**: Update test suite for Qdrant backend validation
+7. **Validation**: Execute target queries and measure improvement
 
-This plan directly implements the architectural evolution described in migration-plan.md, focusing on Qdrant's advanced capabilities rather than database compatibility.
+This plan implements the architectural evolution described in migration-plan.md using drop-in Qdrant backend replacement, maintaining existing interfaces and class names.
