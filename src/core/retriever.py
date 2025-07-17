@@ -1,6 +1,7 @@
 import logging
 from typing import List, Dict, Any
 from collections import defaultdict
+from qdrant_client.http.models import Filter, FieldCondition, MatchValue, MatchAny, Range, MatchText
 
 # --- Configuration ---
 logging.basicConfig(
@@ -10,28 +11,60 @@ logging.basicConfig(
 # --- Helper Functions ---
 
 
-def _build_where_filter(filters: List[Dict[str, Any]]) -> Dict[str, Any]:
+def _build_qdrant_filter(filters: List[Dict[str, Any]]) -> Filter:
     """
-    Builds a ChromaDB 'where' filter from a list of filter conditions.
-    If multiple filters are provided, they are combined using '$and'.
+    Builds a Qdrant Filter object from a list of filter conditions.
+    Uses Qdrant's native filtering capabilities for optimal performance.
     """
     logger = logging.getLogger(__name__)
     
     if not filters:
         logger.debug("No filters provided, returning empty filter")
-        return {}
+        return Filter()
 
-    logger.debug(f"Building where filter from {len(filters)} conditions: {filters}")
+    logger.debug(f"Building Qdrant filter from {len(filters)} conditions: {filters}")
     
-    if len(filters) == 1:
-        f = filters[0]
-        result = {f["field"]: {f["operator"]: f["value"]}}
-        logger.debug(f"Single filter result: {result}")
-        return result
-
-    and_conditions = [{f["field"]: {f["operator"]: f["value"]}} for f in filters]
-    result = {"$and": and_conditions}
-    logger.debug(f"Combined filter result: {result}")
+    conditions = []
+    
+    for f in filters:
+        field = f["field"]
+        operator = f["operator"]
+        value = f["value"]
+        
+        if operator == "eq":
+            conditions.append(FieldCondition(key=field, match=MatchValue(value=value)))
+        elif operator == "ne":
+            # Qdrant doesn't have direct 'not equal', use must_not
+            conditions.append(FieldCondition(key=field, match=MatchValue(value=value)))
+        elif operator == "gt":
+            conditions.append(FieldCondition(key=field, range=Range(gt=value)))
+        elif operator == "gte":
+            conditions.append(FieldCondition(key=field, range=Range(gte=value)))
+        elif operator == "lt":
+            conditions.append(FieldCondition(key=field, range=Range(lt=value)))
+        elif operator == "lte":
+            conditions.append(FieldCondition(key=field, range=Range(lte=value)))
+        elif operator == "match":
+            if isinstance(value, list):
+                conditions.append(FieldCondition(key=field, match=MatchAny(any=value)))
+            else:
+                conditions.append(FieldCondition(key=field, match=MatchValue(value=value)))
+        elif operator == "contains":
+            # For array fields like tags/wikilinks
+            if isinstance(value, list):
+                conditions.append(FieldCondition(key=field, match=MatchAny(any=value)))
+            else:
+                conditions.append(FieldCondition(key=field, match=MatchAny(any=[value])))
+        elif operator == "like":
+            # For partial string matching
+            conditions.append(FieldCondition(key=field, match=MatchText(text=str(value))))
+    
+    if len(conditions) == 1:
+        result = Filter(must=conditions)
+    else:
+        result = Filter(must=conditions)
+    
+    logger.debug(f"Qdrant filter result: {result}")
     return result
 
 
@@ -62,77 +95,7 @@ def _normalize_get_results(results: dict) -> list:
     return normalized_sections
 
 
-def _deduplicate_query_results(results: dict) -> list:
-    """
-    Removes redundant sections from ChromaDB 'query' results by keeping only
-    the highest-ranked section for any given source file.
-    """
-    logger = logging.getLogger(__name__)
-    
-    if not results or not results.get("ids") or not results["ids"][0]:
-        logger.debug("No results to deduplicate")
-        return []
 
-    ids = results["ids"][0]
-    metadatas = results["metadatas"][0] if results.get("metadatas") else []
-    documents = results["documents"][0] if results.get("documents") else []
-    
-    logger.debug(f"Deduplicating query results: {len(ids)} total documents")
-
-    final_results = {}
-    for i, doc_id in enumerate(ids):
-        metadata = metadatas[i] if i < len(metadatas) else {}
-        file_path = metadata.get("file_path")
-
-        if not file_path:
-            logger.debug(f"Skipping document {i}: no file_path in metadata")
-            continue
-            
-        if file_path in final_results:
-            logger.debug(f"Skipping duplicate file_path: {file_path}")
-            continue
-
-        final_results[file_path] = {
-            "id": doc_id,
-            "metadata": metadata,
-            "document": documents[i] if i < len(documents) else "",
-        }
-        logger.debug(f"Added unique document for file_path: {file_path}")
-
-    deduplicated = list(final_results.values())
-    logger.debug(f"Deduplication complete: {len(deduplicated)} unique documents")
-    return deduplicated
-
-
-def _deduplicate_query_sections(sections: list) -> list:
-    """
-    Removes redundant sections from LangChain query results by keeping only
-    the highest-ranked section for any given source file.
-    Deduplication should preserve the highest relevance score, not just the first occurrence.
-    """
-    logger = logging.getLogger(__name__)
-    
-    if not sections:
-        logger.debug("No sections to deduplicate")
-        return []
-    
-    file_mapping = defaultdict(list)
-    
-    # Group sections by file_path
-    for section in sections:
-        metadata = section.get("metadata", {})
-        file_path = metadata.get("file_path")
-        if file_path:
-            file_mapping[file_path].append(section)
-        else:
-            logger.debug("Skipping section without file_path in metadata")
-    
-    logger.debug(f"Found {len(file_mapping)} unique file paths from {len(sections)} sections")
-    
-    deduplicated = [sections_list[0] for sections_list in file_mapping.values()]
-    logger.debug(f"Deduplication complete: {len(deduplicated)} sections from {len(sections)} original")
-    
-    return deduplicated
 
 
 # --- Result Packaging Functions ---
@@ -213,11 +176,9 @@ def retrieve_context(query_plan: dict, vector_manager) -> dict:
     )
     logger.debug(f"Full query plan: {query_plan}")
 
-    where_filter = _build_where_filter(query_plan.get("filters", []))
-    # Skip empty where filters to prevent ChromaDB validation errors
-    where_filter = where_filter if where_filter else None
+    qdrant_filter = _build_qdrant_filter(query_plan.get("filters", []))
     
-    logger.debug(f"Processed where filter: {where_filter}")
+    logger.debug(f"Processed Qdrant filter: {qdrant_filter}")
     processed_sections = []
 
     if query_plan.get("semantic_search_needed"):
@@ -230,7 +191,9 @@ def retrieve_context(query_plan: dict, vector_manager) -> dict:
         docs = vector_manager.search_documents(
             query=semantic_query, 
             k=20, 
-            filter_dict=where_filter
+            filter_dict=qdrant_filter,
+            group_by="file_path",
+            group_size=1
         )
         search_time = time.time() - search_start
         
@@ -252,8 +215,10 @@ def retrieve_context(query_plan: dict, vector_manager) -> dict:
         
         get_start = time.time()
         docs = vector_manager.get_documents_by_metadata(
-            filter_dict=where_filter,
-            limit=100
+            filter_dict=qdrant_filter,
+            limit=100,
+            group_by="file_path",
+            group_size=1
         )
         get_time = time.time() - get_start
         
@@ -279,7 +244,7 @@ def retrieve_context(query_plan: dict, vector_manager) -> dict:
     
     if len(processed_sections) == 0:
         logger.warning(f"Zero sections returned for query plan: {query_plan}")
-        logger.warning(f"Filter used: {where_filter}")
+        logger.warning(f"Filter used: {qdrant_filter}")
         logger.warning(f"Semantic search: {query_plan.get('semantic_search_needed', False)}")
         if query_plan.get('semantic_search_needed'):
             logger.warning(f"Query text: '{query_plan.get('semantic_query', 'N/A')}'")
