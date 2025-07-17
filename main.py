@@ -1,309 +1,45 @@
 #!/usr/bin/env python3
 """
-RAG Micro-Agent Main Entry Point
+RAG Sub-Agent MVP CLI
 
-This module provides the main CLI interface for the RAG micro-agent,
-implementing the query planner → retriever → response pipeline as specified
-in the technical specification.
+Minimal CLI for indexing vaults and querying notes.
 """
 
 import argparse
-import os
 import sys
-import json
-import logging
-from typing import Dict, Any, Optional
+import os
+from pathlib import Path
 
 # Add src directory to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
-from core.query_planner import deconstruct_query
-from core.retriever import retrieve_context
-from core.ingestion.vector_manager import VectorStoreManager
-from config import LLMConfig, validate_config
-
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
-logger = logging.getLogger(__name__)
-
-
-class RAGMicroAgent:
-    """Main RAG micro-agent class that orchestrates query processing."""
-
-    def __init__(
-        self,
-        config: Optional[LLMConfig] = None,
-    ):
-        """
-        Initialize the RAG micro-agent.
-
-        Args:
-            config: LLMConfig object, defaults to env configuration if not provided
-        """
-        self.config = config or LLMConfig.from_env()
-
-        # Validate configuration
-        validation = validate_config(self.config)
-        if not validation["can_proceed"]:
-            raise ValueError(
-                "Configuration validation failed: " + ", ".join(validation["issues"])
-            )
-
-        if validation["warnings"]:
-            for warning in validation["warnings"]:
-                logger.warning(warning)
-
-        # Initialize VectorStoreManager as the single vector store interface
-        self.vector_manager = VectorStoreManager(
-            db_path=self.config.db_path,
-            collection_name=self.config.collection_name
-        )
-
-        logger.info(
-            f"Initialized RAG micro-agent with collection: {self.config.collection_name}"
-        )
-
-    def query(self, user_query: str) -> Dict[str, Any]:
-        """
-        Process a user query through the full RAG pipeline.
-
-        Args:
-            user_query: Natural language query from user
-
-        Returns:
-            Dictionary containing the context package
-        """
-        logger.info(f"Processing query: {user_query}")
-
-        try:
-            # Step 1: Deconstruct query using query planner
-            query_plan = deconstruct_query(user_query)
-            logger.info(f"Generated query plan: {json.dumps(query_plan, indent=2)}")
-
-            # Step 2: Execute retrieval using retriever interface
-            context_package = retrieve_context(query_plan, self.vector_manager)
-            logger.info(f"Retrieved {len(context_package.get('results', []))} results")
-
-            return context_package
-
-        except Exception as e:
-            logger.error(f"Error processing query: {str(e)}")
-            raise
-
-    def get_collection_stats(self) -> Dict[str, Any]:
-        """Get statistics about the current collection."""
-        try:
-            stats = self.vector_manager.get_collection_stats()
-            return stats
-        except Exception as e:
-            logger.error(f"Error getting collection stats: {str(e)}")
-            return {"error": str(e)}
-
-    def index_vault(self, vault_path: str, reset: bool = False) -> Dict[str, Any]:
-        """
-        Index all markdown files in a vault directory.
-        
-        Args:
-            vault_path: Path to the vault directory
-            reset: Whether to clear existing collection before indexing
-            
-        Returns:
-            Dictionary with indexing results
-        """
-        from core.ingestion.scanner import VaultScanner, ScanOptions
-        from core.ingestion.processor import NoteProcessor
-        from pathlib import Path
-        import time
-
-        start_time = time.time()
-        
-        try:
-            # Initialize components
-            scanner = VaultScanner(ScanOptions())
-            processor = NoteProcessor()
-            
-            # Clear collection if reset requested
-            if reset:
-                self.vector_manager.clear_collection()
-                logger.info("Cleared existing collection")
-            
-            # Scan for markdown files
-            logger.info(f"Scanning vault: {vault_path}")
-            files = list(scanner.scan(vault_path))
-            
-            if not files:
-                return {
-                    "status": "completed",
-                    "files_found": 0,
-                    "files_processed": 0,
-                    "documents_added": 0,
-                    "errors": [],
-                    "elapsed_time": time.time() - start_time
-                }
-            
-            # Process files and add to vector store
-            documents = []
-            errors = []
-            
-            for file_path in files:
-                try:
-                    file_docs = list(processor.process_file(str(file_path)))
-                    documents.extend(file_docs)
-                    logger.debug(f"Processed {file_path}: {len(file_docs)} documents")
-                except Exception as e:
-                    error_msg = f"Failed to process {file_path}: {str(e)}"
-                    logger.error(error_msg)
-                    errors.append(error_msg)
-            
-            # Add documents to vector store
-            if documents:
-                self.vector_manager.add_documents(documents)
-                logger.info(f"Added {len(documents)} documents to vector store")
-            
-            return {
-                "status": "completed",
-                "files_found": len(files),
-                "files_processed": len(files) - len(errors),
-                "documents_added": len(documents),
-                "errors": errors,
-                "elapsed_time": time.time() - start_time
-            }
-            
-        except Exception as e:
-            logger.error(f"Indexing failed: {str(e)}")
-            return {
-                "status": "failed",
-                "files_found": 0,
-                "files_processed": 0,
-                "documents_added": 0,
-                "errors": [str(e)],
-                "elapsed_time": time.time() - start_time
-            }
-
-
-def run_rag_query(user_query: str, db_path: str = "./data/chroma_db") -> Dict[str, Any]:
-    """
-    Convenience function to run a single RAG query.
-
-    Args:
-        user_query: Natural language query
-        db_path: Path to ChromaDB database
-
-    Returns:
-        Context package dictionary
-    """
-    agent = RAGMicroAgent(db_path=db_path)  # pyright: ignore
-    return agent.query(user_query)
-
 
 def main():
     """Main CLI entry point."""
-    parser = argparse.ArgumentParser(description="RAG Micro-Agent CLI")
-    parser.add_argument("query", nargs="?", help="Natural language query to process")
-    parser.add_argument(
-        "--db-path",
-        default="./data/chroma_db",
-        help="Path to ChromaDB database (default: ./data/chroma_db)",
+    parser = argparse.ArgumentParser(
+        description="RAG Sub-Agent MVP - Index and query your notes"
     )
-    parser.add_argument(
-        "--collection",
-        default="obsidian_notes",
-        help="Collection name (default: obsidian_notes)",
-    )
-    parser.add_argument(
-        "--stats", action="store_true", help="Show collection statistics"
-    )
-    parser.add_argument("--json", action="store_true", help="Output results as JSON")
-    parser.add_argument(
-        "--verbose", "-v", action="store_true", help="Enable verbose logging"
-    )
-    parser.add_argument(
-        "--index",
-        help="Path to vault directory to index notes from"
-    )
-    parser.add_argument(
-        "--reset", 
-        action="store_true", 
-        help="Clear existing collection before indexing"
-    )
-
+    parser.add_argument("query", nargs="?", help="Natural language query to search notes")
+    parser.add_argument("--index", help="Path to vault directory to index")
+    
     args = parser.parse_args()
+    
+    if args.index:
+        index_vault(args.index)
+    elif args.query:
+        run_query(args.query)
+    else:
+        parser.print_help()
 
-    if args.verbose:
-        logging.getLogger().setLevel(logging.DEBUG)
 
-    try:
-        # Create config from arguments via environment variables
-        import os
+def index_vault(vault_path: str):
+    """Index a vault directory."""
+    pass
 
-        os.environ["CHROMA_DB_PATH"] = args.db_path
-        os.environ["CHROMA_COLLECTION_NAME"] = args.collection
-        agent = RAGMicroAgent()
 
-        if args.stats:
-            stats = agent.get_collection_stats()
-            if args.json:
-                print(json.dumps(stats, indent=2))
-            else:
-                print(f"Collection: {stats['collection_name']}")
-                print(f"Documents: {stats['document_count']}")
-                print(f"Database: {stats['db_path']}")
-            return
-
-        if args.index:
-            result = agent.index_vault(args.index, reset=args.reset)
-            if args.json:
-                print(json.dumps(result, indent=2))
-            else:
-                status = "✅ Completed" if result["status"] == "completed" else "❌ Failed"
-                print(f"{status}")
-                print(f"Files processed: {result['files_processed']}/{result['files_found']}")
-                print(f"Documents added: {result['documents_added']}")
-                if result["errors"]:
-                    print(f"Errors: {len(result['errors'])}")
-                    for error in result["errors"]:
-                        print(f"  - {error}")
-                if result["elapsed_time"] > 0:
-                    print(f"Time elapsed: {result['elapsed_time']:.2f}s")
-            return
-
-        if not args.query:
-            parser.error("Query is required unless --stats or --index is used")
-
-        # Process the query
-        result = agent.query(args.query)
-
-        if args.json:
-            print(json.dumps(result, indent=2))
-        else:
-            print(f"Query: {args.query}")
-            print(f"Found {len(result.get('results', []))} results:")
-            print()
-
-            for i, item in enumerate(result.get("results", []), 1):
-                print(f"{i}. {item.get('title', 'Unknown')}")
-                if "heading" in item:
-                    print(f"   Section: {item['heading']}")
-                if "tags" in item and item["tags"]:
-                    print(f"   Tags: {', '.join(item['tags'])}")
-                if "content" in item:
-                    content = (
-                        item["content"][:200] + "..."
-                        if len(item["content"]) > 200
-                        else item["content"]
-                    )
-                    print(f"   Content: {content}")
-                print()
-
-    except KeyboardInterrupt:
-        print("\nOperation cancelled by user")
-        sys.exit(1)
-    except Exception as e:
-        logger.error(f"Error: {str(e)}")
-        sys.exit(1)
+def run_query(query: str):
+    """Run a query against indexed notes."""
+    pass
 
 
 if __name__ == "__main__":
