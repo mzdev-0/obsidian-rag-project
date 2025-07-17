@@ -8,7 +8,8 @@ packages = [
     { include = "src" }
 ]
 dependencies = [
-    "chromadb>=1.0.15",
+    "qdrant-client>=1.9.0",
+    "langchain-qdrant>=0.1.0",
     "langchain-community>=0.2.10",
     "llama-cpp-python>=0.2.83",
     "uv>=0.2.11",
