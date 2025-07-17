@@ -19,7 +19,7 @@ def pytest_configure(config):
 
 @pytest.fixture
 def temp_db_dir():
-    """Provide a temporary directory for ChromaDB testing."""
+    """Provide a temporary directory for Qdrant testing."""
     with tempfile.TemporaryDirectory() as tmp_dir:
         yield tmp_dir
 
@@ -38,8 +38,7 @@ This is the second section with **markdown** formatting and another reference [[
 
 @pytest.fixture
 def mock_vectorstore():
-    """Provide a mock ChromaDB vectorstore for testing."""
+    """Provide a mock Qdrant vectorstore for testing."""
     mock_store = Mock()
-    mock_store._collection = Mock()
     mock_store.similarity_search = Mock(return_value=[])
     return mock_store
