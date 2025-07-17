@@ -11,7 +11,7 @@ from pathlib import Path
 
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
-from qdrant_client.http.models import Distance, VectorParams, PayloadIndexType
+from qdrant_client.http.models import Distance, VectorParams
 from langchain_qdrant import QdrantVectorStore
 from langchain.schema import Document
 
@@ -37,9 +37,7 @@ class VectorStoreManager:
         self.config = config
         self.collection_name = config.qdrant_collection_name
         self.client = QdrantClient(
-            url=config.qdrant_url,
-            api_key=config.qdrant_api_key,
-            timeout=60
+            url=config.qdrant_url, api_key=config.qdrant_api_key, timeout=60
         )
         self.vectorstore = None
         self._initialize_vectorstore()
@@ -56,9 +54,8 @@ class VectorStoreManager:
             self.client.create_collection(
                 collection_name=self.collection_name,
                 vectors_config=VectorParams(
-                    size=self.config.qdrant_vector_size,
-                    distance=Distance.COSINE
-                )
+                    size=self.config.qdrant_vector_size, distance=Distance.COSINE
+                ),
             )
             logger.info(f"Created Qdrant collection: {self.collection_name}")
 
@@ -67,7 +64,7 @@ class VectorStoreManager:
             embedding=embedder,
             collection_name=self.collection_name,
             url=self.config.qdrant_url,
-            api_key=self.config.qdrant_api_key
+            api_key=self.config.qdrant_api_key,
         )
 
         logger.info(
@@ -77,23 +74,23 @@ class VectorStoreManager:
     def _create_payload_indexes(self):
         """Create optimized payload indexes for all metadata fields."""
         indexes = [
-            ("title", PayloadIndexType.KEYWORD),
-            ("file_path", PayloadIndexType.KEYWORD),
-            ("created_date", PayloadIndexType.INTEGER),
-            ("modified_date", PayloadIndexType.INTEGER),
-            ("tags", PayloadIndexType.KEYWORD),
-            ("wikilinks", PayloadIndexType.KEYWORD),
-            ("heading", PayloadIndexType.KEYWORD),
-            ("level", PayloadIndexType.INTEGER),
-            ("section_id", PayloadIndexType.KEYWORD),
+            ("title", "keyword"),
+            ("file_path", "keyword"),
+            ("created_date", "datetime"),
+            ("modified_date", "datetime"),
+            ("tags", "keyword"),
+            ("wikilinks", "keyword"),
+            ("heading", "keyword"),
+            ("level", "integer"),
+            ("section_id", "keyword"),
         ]
-        
+
         for field_name, index_type in indexes:
             try:
                 self.client.create_payload_index(
                     collection_name=self.collection_name,
                     field_name=field_name,
-                    field_type=index_type
+                    field_type=index_type,
                 )
                 logger.debug(f"Created payload index for {field_name}")
             except Exception as e:
@@ -156,8 +153,17 @@ class VectorStoreManager:
                 "collection_name": self.collection_name,
                 "qdrant_url": self.config.qdrant_url,
                 "vector_size": self.config.qdrant_vector_size,
-                "indexed_fields": ["title", "file_path", "created_date", "modified_date", 
-                                 "tags", "wikilinks", "heading", "level", "section_id"]
+                "indexed_fields": [
+                    "title",
+                    "file_path",
+                    "created_date",
+                    "modified_date",
+                    "tags",
+                    "wikilinks",
+                    "heading",
+                    "level",
+                    "section_id",
+                ],
             }
         except Exception as e:
             logger.error(f"Failed to get collection stats: {e}")
@@ -172,8 +178,7 @@ class VectorStoreManager:
         """Check if a document with given ID exists."""
         try:
             result = self.client.retrieve(
-                collection_name=self.collection_name,
-                ids=[doc_id]
+                collection_name=self.collection_name, ids=[doc_id]
             )
             return len(result) > 0
         except Exception as e:
@@ -185,7 +190,7 @@ class VectorStoreManager:
         try:
             self.client.delete(
                 collection_name=self.collection_name,
-                points_selector=models.PointIdsList(points=[doc_id])
+                points_selector=models.PointIdsList(points=[doc_id]),
             )
             return True
         except Exception as e:
@@ -207,16 +212,20 @@ class VectorStoreManager:
             scroll_result = self.client.scroll(
                 collection_name=self.collection_name,
                 scroll_filter=models.Filter(
-                    must=[models.FieldCondition(key="file_path", match=models.MatchValue(value=file_path))]
+                    must=[
+                        models.FieldCondition(
+                            key="file_path", match=models.MatchValue(value=file_path)
+                        )
+                    ]
                 ),
-                limit=1000
+                limit=1000,
             )
-            
+
             doc_ids = [point.id for point in scroll_result[0]]
             if doc_ids:
                 self.client.delete(
                     collection_name=self.collection_name,
-                    points_selector=models.PointIdsList(points=doc_ids)
+                    points_selector=models.PointIdsList(points=doc_ids),
                 )
                 return len(doc_ids)
 
@@ -225,7 +234,9 @@ class VectorStoreManager:
             logger.error(f"Failed to remove documents by path {file_path}: {e}")
             return 0
 
-    def search_documents(self, query: str, k: int = 5, filter_dict: Optional[dict] = None) -> List[Document]:
+    def search_documents(
+        self, query: str, k: int = 5, filter_dict: Optional[dict] = None
+    ) -> List[Document]:
         """
         Search documents by semantic similarity.
 
@@ -243,7 +254,9 @@ class VectorStoreManager:
             logger.error(f"Search failed: {e}")
             return []
 
-    def search_documents_with_scores(self, query: str, k: int = 5, filter_dict: Optional[dict] = None) -> List[Tuple[Document, float]]:
+    def search_documents_with_scores(
+        self, query: str, k: int = 5, filter_dict: Optional[dict] = None
+    ) -> List[Tuple[Document, float]]:
         """
         Search documents by semantic similarity with relevance scores.
 
@@ -256,12 +269,16 @@ class VectorStoreManager:
             List of (Document, score) tuples
         """
         try:
-            return self.vectorstore.similarity_search_with_score(query, k=k, filter=filter_dict)
+            return self.vectorstore.similarity_search_with_score(
+                query, k=k, filter=filter_dict
+            )
         except Exception as e:
             logger.error(f"Search with scores failed: {e}")
             return []
 
-    def get_documents_by_metadata(self, filter_dict: dict, limit: int = 100) -> List[Document]:
+    def get_documents_by_metadata(
+        self, filter_dict: dict, limit: int = 100
+    ) -> List[Document]:
         """
         Get documents by metadata filtering (no semantic search).
 
@@ -274,20 +291,20 @@ class VectorStoreManager:
         """
         try:
             results = self.vectorstore._collection.get(
-                where=filter_dict,
-                limit=limit,
-                include=["documents", "metadatas"]
+                where=filter_dict, limit=limit, include=["documents", "metadatas"]
             )
-            
+
             documents = []
             for i, doc_id in enumerate(results.get("ids", [])):
-                if i < len(results.get("documents", [])) and i < len(results.get("metadatas", [])):
+                if i < len(results.get("documents", [])) and i < len(
+                    results.get("metadatas", [])
+                ):
                     doc = Document(
                         page_content=results["documents"][i],
-                        metadata=results["metadatas"][i]
+                        metadata=results["metadatas"][i],
                     )
                     documents.append(doc)
-            
+
             return documents
         except Exception as e:
             logger.error(f"Metadata search failed: {e}")
@@ -301,4 +318,3 @@ class VectorStoreManager:
         except Exception as e:
             logger.error(f"Failed to get collection count: {e}")
             return 0
-
