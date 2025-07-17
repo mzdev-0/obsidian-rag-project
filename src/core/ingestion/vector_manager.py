@@ -9,10 +9,13 @@ from typing import List, Optional, Tuple
 import logging
 from pathlib import Path
 
-from langchain_community.vectorstores import Chroma
+from qdrant_client import QdrantClient
+from qdrant_client.http import models
+from qdrant_client.http.models import Distance, VectorParams, PayloadIndexType
+from langchain_qdrant import QdrantVectorStore
 from langchain.schema import Document
 
-from config import get_embedding_function
+from config import LLMConfig, get_embedding_function
 
 
 def get_embedder():
@@ -30,27 +33,71 @@ logger = logging.getLogger(__name__)
 class VectorStoreManager:
     """Manages vector store operations for note embeddings."""
 
-    def __init__(self, db_path: str, collection_name: str = "obsidian_notes"):
-        self.db_path = str(Path(db_path))
-        self.collection_name = collection_name
+    def __init__(self, config: LLMConfig):
+        self.config = config
+        self.collection_name = config.qdrant_collection_name
+        self.client = QdrantClient(
+            url=config.qdrant_url,
+            api_key=config.qdrant_api_key,
+            timeout=60
+        )
         self.vectorstore = None
         self._initialize_vectorstore()
+        self._create_payload_indexes()
 
     def _initialize_vectorstore(self):
-        """Initialize the Chroma vectorstore with the configured embedding function."""
+        """Initialize the Qdrant vectorstore with the configured embedding function."""
         embedder = get_embedder()
         if embedder is None:
             raise RuntimeError("Embedding function not available")
 
-        self.vectorstore = Chroma(
+        # Create collection if it doesn't exist
+        if not self.client.collection_exists(self.collection_name):
+            self.client.create_collection(
+                collection_name=self.collection_name,
+                vectors_config=VectorParams(
+                    size=self.config.qdrant_vector_size,
+                    distance=Distance.COSINE
+                )
+            )
+            logger.info(f"Created Qdrant collection: {self.collection_name}")
+
+        # Initialize LangChain integration
+        self.vectorstore = QdrantVectorStore.from_existing_collection(
+            embedding=embedder,
             collection_name=self.collection_name,
-            embedding_function=embedder,
-            persist_directory=self.db_path,
+            url=self.config.qdrant_url,
+            api_key=self.config.qdrant_api_key
         )
 
         logger.info(
-            f"Initialized vector store at {self.db_path} with collection {self.collection_name}"
+            f"Initialized Qdrant vector store at {self.config.qdrant_url} with collection {self.collection_name}"
         )
+
+    def _create_payload_indexes(self):
+        """Create optimized payload indexes for all metadata fields."""
+        indexes = [
+            ("title", PayloadIndexType.KEYWORD),
+            ("file_path", PayloadIndexType.KEYWORD),
+            ("created_date", PayloadIndexType.INTEGER),
+            ("modified_date", PayloadIndexType.INTEGER),
+            ("tags", PayloadIndexType.KEYWORD),
+            ("wikilinks", PayloadIndexType.KEYWORD),
+            ("heading", PayloadIndexType.KEYWORD),
+            ("level", PayloadIndexType.INTEGER),
+            ("section_id", PayloadIndexType.KEYWORD),
+        ]
+        
+        for field_name, index_type in indexes:
+            try:
+                self.client.create_payload_index(
+                    collection_name=self.collection_name,
+                    field_name=field_name,
+                    field_type=index_type
+                )
+                logger.debug(f"Created payload index for {field_name}")
+            except Exception as e:
+                logger.debug(f"Index for {field_name} may already exist: {e}")
 
     def store_document(self, content: str, metadata: dict, doc_id: str) -> None:
         """
@@ -93,11 +140,9 @@ class VectorStoreManager:
     def clear_collection(self) -> None:
         """Clear all documents from the collection."""
         try:
-            # Get all document IDs
-            all_docs = self.vectorstore._collection.get(include=["documents"])
-            if all_docs and all_docs.get("ids"):
-                self.vectorstore._collection.delete(ids=all_docs["ids"])
-                logger.info("Cleared all documents from collection")
+            self.client.delete_collection(self.collection_name)
+            self._initialize_vectorstore()
+            logger.info("Cleared Qdrant collection")
         except Exception as e:
             logger.error(f"Failed to clear collection: {e}")
             raise
@@ -105,28 +150,32 @@ class VectorStoreManager:
     def get_collection_stats(self) -> dict:
         """Get metadata about the vector store collection."""
         try:
-            count = self.vectorstore._collection.count()
+            info = self.client.get_collection(self.collection_name)
             return {
-                "total_documents": count,
+                "total_documents": info.points_count,
                 "collection_name": self.collection_name,
-                "db_path": self.db_path,
+                "qdrant_url": self.config.qdrant_url,
+                "vector_size": self.config.qdrant_vector_size,
+                "indexed_fields": ["title", "file_path", "created_date", "modified_date", 
+                                 "tags", "wikilinks", "heading", "level", "section_id"]
             }
         except Exception as e:
             logger.error(f"Failed to get collection stats: {e}")
             return {
                 "total_documents": 0,
                 "collection_name": self.collection_name,
-                "db_path": self.db_path,
+                "qdrant_url": self.config.qdrant_url,
                 "error": str(e),
             }
 
     def document_exists(self, doc_id: str) -> bool:
         """Check if a document with given ID exists."""
         try:
-            result = self.vectorstore._collection.get(
-                ids=[doc_id], include=["metadatas"]
+            result = self.client.retrieve(
+                collection_name=self.collection_name,
+                ids=[doc_id]
             )
-            return bool(result.get("ids"))
+            return len(result) > 0
         except Exception as e:
             logger.error(f"Error checking document existence: {e}")
             return False
@@ -134,7 +183,10 @@ class VectorStoreManager:
     def remove_document(self, doc_id: str) -> bool:
         """Remove a specific document by ID."""
         try:
-            self.vectorstore._collection.delete(ids=[doc_id])
+            self.client.delete(
+                collection_name=self.collection_name,
+                points_selector=models.PointIdsList(points=[doc_id])
+            )
             return True
         except Exception as e:
             logger.error(f"Failed to remove document {doc_id}: {e}")
@@ -152,13 +204,20 @@ class VectorStoreManager:
         """
         try:
             # Find documents matching the file path
-            results = self.vectorstore._collection.get(
-                where={"file_path": file_path}, include=["metadatas"]
+            scroll_result = self.client.scroll(
+                collection_name=self.collection_name,
+                scroll_filter=models.Filter(
+                    must=[models.FieldCondition(key="file_path", match=models.MatchValue(value=file_path))]
+                ),
+                limit=1000
             )
-
-            if results and results.get("ids"):
-                doc_ids = results["ids"]
-                self.vectorstore._collection.delete(ids=doc_ids)
+            
+            doc_ids = [point.id for point in scroll_result[0]]
+            if doc_ids:
+                self.client.delete(
+                    collection_name=self.collection_name,
+                    points_selector=models.PointIdsList(points=doc_ids)
+                )
                 return len(doc_ids)
 
             return 0
@@ -237,7 +296,8 @@ class VectorStoreManager:
     def get_collection_count(self) -> int:
         """Get the total number of documents in the collection."""
         try:
-            return self.vectorstore._collection.count()
+            info = self.client.get_collection(self.collection_name)
+            return info.points_count
         except Exception as e:
             logger.error(f"Failed to get collection count: {e}")
             return 0
