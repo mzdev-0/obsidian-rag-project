@@ -3,6 +3,7 @@
 #
 
 .envrc
+uv.lock
 
 ### Python ###
 # Byte-compiled / optimized / DLL files
@@ -17,11 +18,9 @@ __pycache__/
 data/chroma_db/
 data/models/
 data/sample_notes/
+data/
 
 # Deprecated paths (can be removed after transition)
-chroma_db/
-models/
-test_notes/
 
 # Distribution / packaging
 ruff.toml
