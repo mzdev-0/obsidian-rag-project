@@ -13,6 +13,13 @@ from pathlib import Path
 # Add src directory to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
+from src.core.query_planner import deconstruct_query
+from src.core.retriever import retrieve_context
+from src.core.ingestion.vector_manager import VectorStoreManager
+from src.core.ingestion.scanner import VaultScanner, ScanOptions
+from src.core.ingestion.processor import NoteProcessor
+from config import LLMConfig
+
 
 def main():
     """Main CLI entry point."""
