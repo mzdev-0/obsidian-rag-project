@@ -92,7 +92,51 @@ def index_vault(vault_path: str):
 
 def run_query(query: str):
     """Run a query against indexed notes."""
-    pass
+    try:
+        print(f"Query: {query}")
+        
+        # Initialize configuration and vector store
+        config = LLMConfig.from_env()
+        vector_manager = VectorStoreManager(config)
+        
+        # Check if collection exists
+        stats = vector_manager.get_collection_stats()
+        if stats["total_documents"] == 0:
+            print("❌ No documents found in collection. Run --index first.")
+            return
+            
+        # Process query
+        query_plan = deconstruct_query(query)
+        
+        # Retrieve context
+        context_package = retrieve_context(query_plan, vector_manager)
+        results = context_package.get("results", [])
+        
+        if not results:
+            print("No results found")
+            return
+            
+        print(f"Found {len(results)} results:")
+        print()
+        
+        for i, result in enumerate(results, 1):
+            title = result.get("title", "Unknown")
+            heading = result.get("heading", "")
+            content = result.get("content", "")
+            
+            print(f"{i}. {title}")
+            if heading:
+                print(f"   Section: {heading}")
+            
+            if content:
+                preview = content[:200] + "..." if len(content) > 200 else content
+                print(f"   {preview}")
+            
+            print()
+            
+    except Exception as e:
+        print(f"❌ Error running query: {e}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
