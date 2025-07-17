@@ -6,6 +6,7 @@ Eliminates redundant parsing and intermediate data models.
 """
 
 import logging
+import uuid
 from pathlib import Path
 from typing import Iterator
 from langchain.schema import Document
@@ -32,7 +33,7 @@ class NoteProcessor:
         if not note.content_sections:
             logger.warning(f"Note {note.file_path} has no parseable content")
             return
-            
+
         for section in note.content_sections:
             if section.content.strip():
                 yield self._section_to_document(note, section)
@@ -59,8 +60,12 @@ class NoteProcessor:
     def _section_to_document(self, note: Note, section: ContentSection) -> Document:
         """Convert a ContentSection to a LangChain Document."""
         content = f"{note.title} | {section.heading}\n\n{section.content}".strip()
-        
+
+        doc_id = f"{Path(note.file_path).stem}::{section.id}"
+
         metadata = {
+            "id": str(uuid.uuid4()),
+            "doc_id": doc_id,
             "title": note.title,
             "file_path": str(note.file_path),
             "heading": section.heading,
@@ -71,6 +76,6 @@ class NoteProcessor:
             "modified_date": int(note.modified_date.timestamp()),
             "section_id": section.id,
         }
-        
-        doc_id = f"{Path(note.file_path).stem}::{section.id}"
-        return Document(page_content=content, metadata=metadata)
+
+        return Document(id=metadata["id"], page_content=content, metadata=metadata)
+
