@@ -27,7 +27,7 @@ class TestRetrieverIntegration(unittest.TestCase):
         Set up persistent test database that won't be recreated unless source files change.
         Checksum test files to determine if rebuild needed.
         """
-        cls.db_path = "../.test_chroma_db_persistent"
+        cls.db_path = "../.test_qdrant_db_persistent"
         cls.collection_name = "test_retriever_lc_collection"
         repo_root = os.path.dirname(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -171,7 +171,7 @@ class TestRetrieverIntegration(unittest.TestCase):
             "semantic_search_needed": False,
             "semantic_query": "",
             "filters": [
-                {"field": "title", "operator": "$eq", "value": note_title_to_test}
+                {"field": "title", "operator": "eq", "value": note_title_to_test}
             ],
             "response_format": "selective_context",
         }
