@@ -150,14 +150,24 @@ SCHEMA_OBJECT = {
                     "operator": {
                         "description": "The operator to use for the filter, following Qdrant syntax.",
                         "type": "string",
-                        "enum": ["gt", "gte", "lt", "lte", "eq", "ne", "match", "contains", "like"],
+                        "enum": [
+                            "gt",
+                            "gte",
+                            "lt",
+                            "lte",
+                            "eq",
+                            "ne",
+                            "match",
+                            "contains",
+                            "like",
+                        ],
                     },
                     "value": {
                         "description": "The value to filter against. Can be string, int, or array.",
                         "anyOf": [
                             {"type": "string"},
                             {"type": "integer"},
-                            {"type": "array", "items": {"type": "string"}}
+                            {"type": "array", "items": {"type": "string"}},
                         ],
                     },
                 },
@@ -189,6 +199,9 @@ def deconstruct_query(
     prompt = QUERY_PLANNER_PROMPT.format(
         today_date=today_date_str, user_query=user_query
     )
+    if not user_query.strip():
+        logging.warning("User query is empty. Skipping")
+        return
 
     for attempt in range(max_retries):
         try:
@@ -241,49 +254,55 @@ def _manual_json_parse(content: str) -> dict:
     when structured JSON schema parsing fails.
     """
     import re
-    
+
     # Try to find JSON object in the content
     json_pattern = r'\{[^{}]*"semantic_search_needed"[^{}]*\}'
     match = re.search(json_pattern, content.strip())
-    
+
     if not match:
         # Try broader JSON object pattern
         json_pattern = r'\{[^{}]*"semantic_query"[^{}]*\}'
         match = re.search(json_pattern, content.strip())
-    
+
     if not match:
         # Try even broader JSON object pattern
-        json_pattern = r'\{[^{}]*\}'
+        json_pattern = r"\{[^{}]*\}"
         matches = re.findall(json_pattern, content.strip())
-        
+
         # Look for a candidate with required fields
         for json_str in matches:
             try:
                 parsed = json.loads(json_str)
-                if all(key in parsed for key in ["semantic_search_needed", "filters", "response_format"]):
+                if all(
+                    key in parsed
+                    for key in ["semantic_search_needed", "filters", "response_format"]
+                ):
                     # Ensure semantic_query is present (can be empty string)
                     if "semantic_query" not in parsed:
                         parsed["semantic_query"] = ""
                     return parsed
             except json.JSONDecodeError:
                 continue
-    
+
     if match:
         try:
             parsed = json.loads(match.group())
             # Ensure all required fields are present
-            if all(key in parsed for key in ["semantic_search_needed", "filters", "response_format"]):
+            if all(
+                key in parsed
+                for key in ["semantic_search_needed", "filters", "response_format"]
+            ):
                 if "semantic_query" not in parsed:
                     parsed["semantic_query"] = ""
                 return parsed
         except json.JSONDecodeError:
             pass
-    
+
     # Return a default fallback plan
     logging.warning("Using default fallback query plan")
     return {
         "semantic_search_needed": True,
         "semantic_query": content.strip(),
         "filters": [],
-        "response_format": "selective_context"
+        "response_format": "selective_context",
     }
