@@ -65,10 +65,11 @@ class NoteProcessor:
             "file_path": str(note.file_path),
             "heading": section.heading,
             "level": section.level,
-            "tags": ",".join(note.tag_wikilinks) if note.tag_wikilinks else "",
-            "wikilinks": ",".join(note.wikilinks) if note.wikilinks else "",
-            "created_date": note.created_date.isoformat(),
-            "modified_date": note.modified_date.isoformat(),
+            "tags": note.tag_wikilinks or [],
+            "wikilinks": note.wikilinks or [],
+            "created_date": int(note.created_date.timestamp()),
+            "modified_date": int(note.modified_date.timestamp()),
+            "section_id": section.id,
         }
         
         doc_id = f"{Path(note.file_path).stem}::{section.id}"
