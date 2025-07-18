@@ -12,10 +12,17 @@ from dataclasses import dataclass
 logger = logging.getLogger(__name__)
 
 # Embedding model import with graceful fallback
+logger = logging.getLogger(__name__)
+
 try:
     from langchain_community.embeddings import LlamaCppEmbeddings
 except ImportError:
     LlamaCppEmbeddings = None
+
+try:
+    from langchain_community.embeddings import OllamaEmbeddings
+except ImportError:
+    OllamaEmbeddings = None
 
 
 @dataclass
@@ -31,6 +38,8 @@ class LLMConfig:
     # Embedding configuration
     embedding_model_path: Optional[str] = None
     use_local_embeddings: bool = True
+    embedding_provider: str = "llamacpp"  # "llamacpp" or "ollama"
+    ollama_embedding_model: str = "nomic-embed-text"
 
     # Qdrant configuration
     qdrant_url: str = "http://localhost:6333"
@@ -61,6 +70,10 @@ class LLMConfig:
         config.use_local_embeddings = (
             os.getenv("USE_LOCAL_EMBEDDINGS", "true").lower() != "false"
         )
+        config.embedding_provider = os.getenv("EMBEDDING_PROVIDER", "llamacpp")
+        config.ollama_embedding_model = os.getenv(
+            "OLLAMA_EMBEDDING_MODEL", "nomic-embed-text"
+        )
 
         # Database settings
         config.qdrant_url = os.getenv("QDRANT_URL", "http://localhost:6333")
@@ -82,12 +95,46 @@ class LLMConfig:
 def get_embedding_function():
     """
     Get the configured embedding function based on environment settings.
-    Returns LlamaCppEmbeddings instance or raises RuntimeError if unavailable.
+    Supports both LlamaCpp and Ollama embeddings.
     """
+    config = LLMConfig.from_env()
+
+    if config.embedding_provider == "ollama":
+        if OllamaEmbeddings is None:
+            raise RuntimeError(
+                "OllamaEmbeddings not available - install langchain-community"
+            )
+
+        return OllamaEmbeddings(
+            base_url=config.ollama_base_url,
+            model=config.ollama_embedding_model,
+        )
+
+    # Default: LlamaCpp embeddings
     if LlamaCppEmbeddings is None:
         raise RuntimeError(
             "LlamaCppEmbeddings not available - install langchain-community"
         )
+
+    if not config.use_local_embeddings:
+        raise RuntimeError("Local embeddings disabled")
+
+    model_path = config.embedding_model_path or os.path.join(
+        os.path.dirname(__file__), "data", "models", "Qwen3-Embedding-0.6B-f16.gguf"
+    )
+
+    # Validate model file exists
+    if not os.path.exists(model_path):
+        raise RuntimeError(f"Embedding model not found at: {model_path}")
+
+    return LlamaCppEmbeddings(
+        model_path=model_path,
+        n_gpu_layers=-1,
+        n_batch=512,
+        n_ctx=32768,
+        verbose=True,
+        use_mlock=True,
+    )
 
     config = LLMConfig.from_env()
 
@@ -107,7 +154,8 @@ def get_embedding_function():
         n_gpu_layers=-1,
         n_batch=512,
         n_ctx=32768,
-        verbose=False,
+        verbose=True,
+        # use_mlock=True,
     )
 
 

@@ -118,17 +118,23 @@ class VectorStoreManager:
 
     def store_documents(self, documents: List[Document], doc_ids: List[str]) -> None:
         """
-        Store multiple documents at once.
-
-        Args:
-            documents: List of Document objects
-            doc_ids: List of document IDs
+        Store multiple documents with progress reporting.
         """
         if not documents:
             return
 
         try:
-            self.vectorstore.add_documents(documents, ids=doc_ids)
+            # Process in batches for progress reporting
+            batch_size = 10
+            total_docs = len(documents)
+            
+            for i in range(0, total_docs, batch_size):
+                batch_docs = documents[i:i+batch_size]
+                batch_ids = doc_ids[i:i+batch_size]
+                
+                print(f"Embedding documents {i+1}-{min(i+batch_size, total_docs)}/{total_docs}")
+                self.vectorstore.add_documents(batch_docs, ids=batch_ids)
+                
             logger.info(f"Stored {len(documents)} documents")
 
         except Exception as e:
