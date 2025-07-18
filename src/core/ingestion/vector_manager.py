@@ -1,7 +1,7 @@
 """
-Vector Store Manager for ChromaDB operations.
+Vector Store Manager for Qdrant operations.
 
-Handles document storage in ChromaDB using the existing LangChain integration,
+Handles document storage in Qdrant using the existing LangChain integration,
 providing a bridge between processed documents and the vector store.
 """
 
@@ -127,14 +127,16 @@ class VectorStoreManager:
             # Process in batches for progress reporting
             batch_size = 10
             total_docs = len(documents)
-            
+
             for i in range(0, total_docs, batch_size):
-                batch_docs = documents[i:i+batch_size]
-                batch_ids = doc_ids[i:i+batch_size]
-                
-                print(f"Embedding documents {i+1}-{min(i+batch_size, total_docs)}/{total_docs}")
+                batch_docs = documents[i : i + batch_size]
+                batch_ids = doc_ids[i : i + batch_size]
+
+                print(
+                    f"Embedding documents {i + 1}-{min(i + batch_size, total_docs)}/{total_docs}"
+                )
                 self.vectorstore.add_documents(batch_docs, ids=batch_ids)
-                
+
             logger.info(f"Stored {len(documents)} documents")
 
         except Exception as e:
@@ -255,10 +257,14 @@ class VectorStoreManager:
         Returns:
             List of matching Document objects
         """
-        logger.info(f"QDRANT SEMANTIC SEARCH: query='{query}', k={k}, filter={filter_dict}")
+        logger.info(
+            f"QDRANT SEMANTIC SEARCH: query='{query}', k={k}, filter={filter_dict}"
+        )
         try:
             results = self.vectorstore.similarity_search(query, k=k, filter=filter_dict)
-            logger.info(f"QDRANT SEMANTIC SEARCH RESULTS: {len(results)} documents returned")
+            logger.info(
+                f"QDRANT SEMANTIC SEARCH RESULTS: {len(results)} documents returned"
+            )
             return results
         except Exception as e:
             logger.error(f"Search failed: {e}")
@@ -278,14 +284,20 @@ class VectorStoreManager:
         Returns:
             List of (Document, score) tuples
         """
-        logger.info(f"QDRANT SEMANTIC SEARCH WITH SCORES: query='{query}', k={k}, filter={filter_dict}")
+        logger.info(
+            f"QDRANT SEMANTIC SEARCH WITH SCORES: query='{query}', k={k}, filter={filter_dict}"
+        )
         try:
             results = self.vectorstore.similarity_search_with_score(
                 query, k=k, filter=filter_dict
             )
-            logger.info(f"QDRANT SEMANTIC SEARCH WITH SCORES RESULTS: {len(results)} documents returned")
+            logger.info(
+                f"QDRANT SEMANTIC SEARCH WITH SCORES RESULTS: {len(results)} documents returned"
+            )
             for doc, score in results:
-                logger.debug(f"  Score: {score:.4f}, Title: {doc.metadata.get('title', 'N/A')}")
+                logger.debug(
+                    f"  Score: {score:.4f}, Title: {doc.metadata.get('title', 'N/A')}"
+                )
             return results
         except Exception as e:
             logger.error(f"Search with scores failed: {e}")
@@ -298,7 +310,7 @@ class VectorStoreManager:
         Get documents by metadata filtering (no semantic search).
 
         Args:
-            filter_dict: ChromaDB-compatible filter
+            filter_dict: Qdrant-compatible filter
             limit: Maximum number of documents to return
 
         Returns:
@@ -321,7 +333,9 @@ class VectorStoreManager:
                     )
                     documents.append(doc)
 
-            logger.info(f"QDRANT METADATA SEARCH RESULTS: {len(documents)} documents returned")
+            logger.info(
+                f"QDRANT METADATA SEARCH RESULTS: {len(documents)} documents returned"
+            )
             return documents
         except Exception as e:
             logger.error(f"Metadata search failed: {e}")

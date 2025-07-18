@@ -57,17 +57,17 @@ Based on the user's intent, decide on the appropriate response format:
 
 **# Examples**
 
-1.  **User Query**: "Recent RAG notes that mention ChromaDB"
+1.  **User Query**: "Recent RAG notes that mention Qdrant"
     **Your Reasoning (Internal Monologue)**:
     - The user wants notes from recently. "Recent" implies a time filter.
-    - The core concept is "RAG and ChromaDB". This is a strong conceptual search.
+    - The core concept is "RAG and Qdrant". This is a strong conceptual search.
     - Because it's a conceptual search, `semantic_search_needed` must be `true`.
     - This is a specific request, so `selective_context` is best.
     **Your JSON Output**:
     ```json
     {{
       "semantic_search_needed": true,
-      "semantic_query": "Notes about Retrieval-Augmented Generation that reference the ChromaDB vector store",
+      "semantic_query": "Notes about Retrieval-Augmented Generation that reference the Qdrant vector store",
       "filters": [
         {{
           "field": "created_date",

@@ -25,7 +25,7 @@ This roadmap tracks what is actually working vs what remains to be implemented.
 
 *   **Feature 2: Hybrid Search & Deduplication** ✅ DONE
     *   Implemented `retrieve_context` using LangChain Chroma vectorstore
-    *   Dynamic ChromaDB filter generation working
+    *   Dynamic Qdrant filter generation working
     *   File-based deduplication (`_deduplicate_query_sections`) implemented
     *   Dual-path: semantic vs metadata queries supported
 

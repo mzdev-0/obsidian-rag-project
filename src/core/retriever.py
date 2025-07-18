@@ -83,8 +83,9 @@ def _build_qdrant_filter(filters: List[Dict[str, Any]]) -> Filter:
 
 
 def _normalize_get_results(results: dict) -> list:
+    # TODO: This may no longer be needed (remnant of old backend)
     """
-    Normalizes the flat structure from a ChromaDB 'get' operation
+    Normalizes the flat structure from a 'get' operation
     into a standardized list of section dictionaries.
     """
     logger = logging.getLogger(__name__)
