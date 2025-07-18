@@ -222,6 +222,8 @@ def deconstruct_query(
             plan = json.loads(content_str)  # pyright: ignore
 
             logging.info("Successfully deconstructed query using JSON Schema.")
+            logging.info(f"USER QUERY: '{user_query}'")
+            logging.info(f"DECONSTRUCTED PLAN: {json.dumps(plan, indent=2)}")
             return plan
 
         except json.JSONDecodeError as e:

@@ -255,8 +255,11 @@ class VectorStoreManager:
         Returns:
             List of matching Document objects
         """
+        logger.info(f"QDRANT SEMANTIC SEARCH: query='{query}', k={k}, filter={filter_dict}")
         try:
-            return self.vectorstore.similarity_search(query, k=k, filter=filter_dict)
+            results = self.vectorstore.similarity_search(query, k=k, filter=filter_dict)
+            logger.info(f"QDRANT SEMANTIC SEARCH RESULTS: {len(results)} documents returned")
+            return results
         except Exception as e:
             logger.error(f"Search failed: {e}")
             return []
@@ -275,10 +278,15 @@ class VectorStoreManager:
         Returns:
             List of (Document, score) tuples
         """
+        logger.info(f"QDRANT SEMANTIC SEARCH WITH SCORES: query='{query}', k={k}, filter={filter_dict}")
         try:
-            return self.vectorstore.similarity_search_with_score(
+            results = self.vectorstore.similarity_search_with_score(
                 query, k=k, filter=filter_dict
             )
+            logger.info(f"QDRANT SEMANTIC SEARCH WITH SCORES RESULTS: {len(results)} documents returned")
+            for doc, score in results:
+                logger.debug(f"  Score: {score:.4f}, Title: {doc.metadata.get('title', 'N/A')}")
+            return results
         except Exception as e:
             logger.error(f"Search with scores failed: {e}")
             return []
@@ -296,6 +304,7 @@ class VectorStoreManager:
         Returns:
             List of matching Document objects
         """
+        logger.info(f"QDRANT METADATA SEARCH: filter={filter_dict}, limit={limit}")
         try:
             results = self.vectorstore._collection.get(
                 where=filter_dict, limit=limit, include=["documents", "metadatas"]
@@ -312,6 +321,7 @@ class VectorStoreManager:
                     )
                     documents.append(doc)
 
+            logger.info(f"QDRANT METADATA SEARCH RESULTS: {len(documents)} documents returned")
             return documents
         except Exception as e:
             logger.error(f"Metadata search failed: {e}")

@@ -1,4 +1,5 @@
 import logging
+import json
 from typing import List, Dict, Any
 from collections import defaultdict
 from qdrant_client.http.models import (
@@ -197,7 +198,8 @@ def retrieve_context(query_plan: dict, vector_manager) -> dict:
 
     qdrant_filter = _build_qdrant_filter(query_plan.get("filters", []))
 
-    logger.debug(f"Processed Qdrant filter: {qdrant_filter}")
+    logger.info(f"EXECUTING QUERY PLAN: {json.dumps(query_plan, indent=2)}")
+    logger.info(f"QDRANT FILTER: {qdrant_filter}")
     processed_sections = []
 
     if query_plan.get("semantic_search_needed"):

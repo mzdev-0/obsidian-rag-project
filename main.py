@@ -114,6 +114,7 @@ def run_query(query: str):
             return
 
         # Process query
+        print(f"Processing query: {query}")
         query_plan = deconstruct_query(query)
 
         # Retrieve context
