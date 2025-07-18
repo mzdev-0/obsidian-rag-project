@@ -36,7 +36,7 @@ class LLMConfig:
     qdrant_url: str = "http://localhost:6333"
     qdrant_api_key: Optional[str] = None
     qdrant_collection_name: str = "obsidian_notes"
-    qdrant_vector_size: int = 1024
+    qdrant_vector_size: int = 4096
 
     @classmethod
     def from_env(cls) -> "LLMConfig":
@@ -68,7 +68,7 @@ class LLMConfig:
         config.qdrant_collection_name = os.getenv(
             "QDRANT_COLLECTION_NAME", "obsidian_notes"
         )
-        config.qdrant_vector_size = int(os.getenv("QDRANT_VECTOR_SIZE", "1024"))
+        config.qdrant_vector_size = int(os.getenv("QDRANT_VECTOR_SIZE", "4096"))
 
         logger.info(
             f"Loaded config: use_online_llm={config.use_online_llm}, "
@@ -158,4 +158,3 @@ def validate_config(config: LLMConfig) -> Dict[str, Any]:
     os.makedirs(config.db_path, exist_ok=True)
 
     return {"issues": issues, "warnings": warnings, "can_proceed": len(issues) == 0}
-
